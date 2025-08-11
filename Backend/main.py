@@ -1,40 +1,38 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
 import ast
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="CodeMap - Code Analyzer")
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For development only
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class CodeRequest(BaseModel):
+    code: str
 
 @app.post("/analyze")
-async def analyze_code(code: str):
+async def analyze_code(request: CodeRequest):
+    code = request.code
     try:
-        # Parse the code into an AST
         tree = ast.parse(code)
-
-        # Extract function names
         functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
-
-        # Extract class names
         classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-
-        # Count lines
         line_count = len(code.splitlines())
 
         return {
-            "functions": {
-                "count": len(functions),
-                "names": functions
-            },
-            "classes": {
-                "count": len(classes),
-                "names": classes
-            },
-            "lines_of_code": line_count
+            "functions": {"count": len(functions), "names": functions},
+            "classes": {"count": len(classes), "names": classes},
+            "lines_of_code": line_count,
         }
-
-    except SyntaxError as e:
-        return {"error": f"Syntax error: {str(e)}"}
     except Exception as e:
         return {"error": str(e)}
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to CodeMap API. Use POST /analyze to analyze your code."}
+    return {"message": "CodeMap API running. Use POST /analyze with JSON {code: 'your code'}"}
