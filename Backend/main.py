@@ -157,34 +157,84 @@ class FlowBuilder:
 
 # ---------------- Call Graph ----------------
 def generate_call_graph(tree: ast.AST):
+    """
+    Generates a call graph including:
+    - standalone functions
+    - class methods
+    - only user-defined calls
+    """
     call_graph = {}
-    current = None
+    defined_functions = set()
 
-    class V(ast.NodeVisitor):
+    # First pass: collect function + method names
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            defined_functions.add(node.name)
+            call_graph[node.name] = set()
+
+    logger.debug(f"Defined functions/methods: {defined_functions}")
+
+    current_function = None
+
+    class CallGraphVisitor(ast.NodeVisitor):
         def visit_FunctionDef(self, node):
-            nonlocal current
-            current = node.name
-            call_graph[current] = set()
+            nonlocal current_function
+            current_function = node.name
+            logger.debug(f"Entering function: {current_function}")
             self.generic_visit(node)
-            current = None
+            logger.debug(f"Leaving function: {current_function}")
+            current_function = None
 
         def visit_Call(self, node):
-            if current:
+            if current_function:
+                func_name = None
+
+                # Direct function call: foo()
                 if isinstance(node.func, ast.Name):
-                    call_graph[current].add(node.func.id)
+                    func_name = node.func.id
+
+                # Method call: obj.foo()
                 elif isinstance(node.func, ast.Attribute):
-                    call_graph[current].add(node.func.attr)
+                    func_name = node.func.attr
+
+                logger.debug(
+                    f"In {current_function}, found call to: {func_name}"
+                )
+
+                if func_name and func_name in defined_functions:
+                    call_graph[current_function].add(func_name)
+                    logger.debug(
+                        f"Added edge: {current_function} -> {func_name}"
+                    )
+
             self.generic_visit(node)
 
-    V().visit(tree)
-    return {k: list(v) for k, v in call_graph.items()}
+    CallGraphVisitor().visit(tree)
+
+    # IMPORTANT: keep nodes even if they have no edges
+    final_graph = {k: list(v) for k, v in call_graph.items()}
+
+    logger.debug(f"Final call graph: {final_graph}")
+
+    return final_graph
+
 
 def build_callgraph_mermaid(call_graph: dict):
     lines = ["flowchart LR"]
+
+    # Always declare nodes
+    for func in call_graph.keys():
+        lines.append(f'{func}["{func}"]')
+
+    # Add edges
     for caller, callees in call_graph.items():
         for callee in callees:
-            lines.append(f"{caller} --> {callee}")
-    return "\n".join(lines)
+            lines.append(f'{caller} --> {callee}')
+
+    mermaid = "\n".join(lines)
+    logger.debug("Generated Call Graph Mermaid:\n" + mermaid)
+    return mermaid
+
 
 
 #---------------- Cyclomatic Complexity ----------------
