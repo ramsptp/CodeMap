@@ -186,6 +186,31 @@ def build_callgraph_mermaid(call_graph: dict):
             lines.append(f"{caller} --> {callee}")
     return "\n".join(lines)
 
+
+#---------------- Cyclomatic Complexity ----------------
+
+def compute_cyclomatic_complexity(func: ast.FunctionDef) -> int:
+    """
+    Cyclomatic Complexity = 1 + number of decision points
+    Decision points:
+      - if
+      - for
+      - while
+      - boolean operators (and/or)
+    """
+    complexity = 1
+
+    for node in ast.walk(func):
+        if isinstance(node, (ast.If, ast.For, ast.While)):
+            complexity += 1
+
+        # Count boolean conditions: a and b and c => +2
+        if isinstance(node, ast.BoolOp):
+            complexity += len(node.values) - 1
+
+    return complexity
+
+
 # ---------------- API ----------------
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
@@ -197,11 +222,19 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
     functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
     func_names = [f.name for f in functions]
 
+    # Cyclomatic complexity per function
+    complexity = {}
+    for f in functions:
+        complexity[f.name] = compute_cyclomatic_complexity(f)
+
+
     result = {
         "functions": {"count": len(func_names), "names": func_names},
         "flowchart": None,
         "call_graph": None,
+        "complexity": complexity
     }
+
 
     # Flowchart
     if function_name:
