@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import mermaid from "mermaid";
 
-// Mermaid should be initialized once
 mermaid.initialize({ startOnLoad: false });
 
 function MermaidChart({ chart }) {
@@ -14,13 +13,12 @@ function MermaidChart({ chart }) {
       return;
     }
 
-    const renderId = "mermaid-" + Math.random().toString(36).substring(2, 9);
+    const id = "m-" + Math.random().toString(36).substring(2, 9);
 
     mermaid
-      .render(renderId, chart)
+      .render(id, chart)
       .then(({ svg }) => setSvg(svg))
-      .catch((err) => {
-        console.error("Mermaid render error:", err);
+      .catch(() => {
         setSvg("<p style='color:red'>Invalid Mermaid syntax</p>");
       });
   }, [chart]);
@@ -30,6 +28,8 @@ function MermaidChart({ chart }) {
 
 function App() {
   const [code, setCode] = useState("");
+  const [language, setLanguage] = useState("python");
+
   const [result, setResult] = useState(null);
   const [functions, setFunctions] = useState([]);
   const [selectedFunc, setSelectedFunc] = useState("");
@@ -45,7 +45,7 @@ function App() {
     setCallGraph(null);
 
     if (!code.trim()) {
-      setError("Please paste some Python code.");
+      setError("Please paste some code.");
       return;
     }
 
@@ -55,7 +55,7 @@ function App() {
 
       const response = await axios.post(
         "http://127.0.0.1:8000/analyze",
-        { code },
+        { code, language },     // <—— IMPORTANT
         { params }
       );
 
@@ -66,11 +66,10 @@ function App() {
       setComplexity(response.data.complexity || {});
     } catch (err) {
       console.error(err);
-      setError("Failed to analyze code.");
+      setError("Failed to analyze code. Please check backend.");
     }
   };
 
-  // Re-run flowchart analysis when function changes
   useEffect(() => {
     if (view === "flowchart" && selectedFunc) {
       analyzeCode(selectedFunc);
@@ -81,12 +80,26 @@ function App() {
     <div style={{ maxWidth: 900, margin: "auto", padding: 20, fontFamily: "Arial" }}>
       <h2>CodeMap – Codebase Visualization Tool</h2>
 
+      {/* Language selector */}
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ marginRight: 10 }}>Language:</label>
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          style={{ padding: 5 }}
+        >
+          <option value="python">Python</option>
+          <option value="java">Java</option>
+        </select>
+      </div>
+
+      {/* Code input */}
       <textarea
         rows={15}
         style={{ width: "100%", fontFamily: "monospace", fontSize: 14 }}
         value={code}
         onChange={(e) => setCode(e.target.value)}
-        placeholder="Paste your Python code here..."
+        placeholder="Paste code here..."
       />
 
       <br />
@@ -99,14 +112,13 @@ function App() {
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
-      {/* ---------- Overview ---------- */}
+      {/* Overview */}
       {result && (
         <div style={{ marginTop: 20, padding: 15, border: "1px solid #ccc" }}>
           <h3>Code Overview</h3>
 
           <p>
-            <strong>Total Functions:</strong>{" "}
-            {result.functions?.count ?? 0}
+            <strong>Total Functions:</strong> {result.functions?.count ?? 0}
           </p>
 
           <p>
@@ -119,9 +131,7 @@ function App() {
               <h4>Cyclomatic Complexity</h4>
               <ul>
                 {Object.entries(complexity).map(([fn, val]) => (
-                  <li key={fn}>
-                    {fn}: {val}
-                  </li>
+                  <li key={fn}>{fn}: {val}</li>
                 ))}
               </ul>
             </>
@@ -129,7 +139,7 @@ function App() {
         </div>
       )}
 
-      {/* ---------- View Toggle ---------- */}
+      {/* Toggle views */}
       <div style={{ marginTop: 20 }}>
         <button onClick={() => setView("flowchart")}>Flowchart</button>
         <button onClick={() => setView("callgraph")} style={{ marginLeft: 10 }}>
@@ -137,7 +147,7 @@ function App() {
         </button>
       </div>
 
-      {/* ---------- Function Selector ---------- */}
+      {/* Function picker */}
       {view === "flowchart" && functions.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <h4>Select function:</h4>
@@ -148,15 +158,13 @@ function App() {
           >
             <option value="">-- Select function --</option>
             {functions.map((fn) => (
-              <option key={fn} value={fn}>
-                {fn}
-              </option>
+              <option key={fn} value={fn}>{fn}</option>
             ))}
           </select>
         </div>
       )}
 
-      {/* ---------- Diagrams ---------- */}
+      {/* Diagrams */}
       <div style={{ marginTop: 30 }}>
         {view === "flowchart" && flowchart && (
           <>

@@ -19,9 +19,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------- Java Support ----------------
+try:
+    import javalang
+    JAVA_ENABLED = True
+    logger.info("Java support enabled")
+except Exception:
+    JAVA_ENABLED = False
+    logger.warning("Java support NOT installed (pip install javalang)")
+
 # ---------------- Models ----------------
 class CodeRequest(BaseModel):
     code: str
+    language: str = "python"   # <---- NEW
 
 # ---------------- Utils ----------------
 def escape_label(s: str) -> str:
@@ -30,7 +40,7 @@ def escape_label(s: str) -> str:
     s = str(s)
     return s.replace("\n", " ").replace('"', "'").replace("|", "/").strip()
 
-# ---------------- Flow Builder ----------------
+# ---------------- Flow Builder (Python) ----------------
 class FlowBuilder:
     def __init__(self):
         self.nodes = []
@@ -46,19 +56,16 @@ class FlowBuilder:
         label = escape_label(label)
         nid = self.new_id()
         self.nodes.append((nid, label, shape))
-        logger.debug(f"add_node: {nid} ({shape}) '{label}'")
         return nid
 
     def add_edge(self, src, dst, label=None):
         if not src or not dst:
             return
         self.edges.append((src, dst, label))
-        logger.debug(f"add_edge: {src} -> {dst} ({label})")
 
     def stmt_sequence(self, stmts):
         entry = last_exit = None
         terminal = False
-
         for stmt in stmts:
             s_entry, s_exit, s_term = self.process_stmt(stmt)
             if s_entry is None:
@@ -71,7 +78,6 @@ class FlowBuilder:
             if s_term:
                 terminal = True
                 break
-
         return entry, last_exit, terminal
 
     def process_stmt(self, stmt):
@@ -81,14 +87,11 @@ class FlowBuilder:
             return node, node, True
 
         if isinstance(stmt, (ast.Assign, ast.AugAssign, ast.Expr)):
-            code = ast.unparse(stmt)
-            node = self.add_node(code)
+            node = self.add_node(ast.unparse(stmt))
             return node, node, False
 
         if isinstance(stmt, ast.If):
-            cond = ast.unparse(stmt.test)
-            cond_node = self.add_node(cond, "diamond")
-
+            cond_node = self.add_node(ast.unparse(stmt.test), "diamond")
             t_entry, t_exit, t_term = self.stmt_sequence(stmt.body)
             if t_entry:
                 self.add_edge(cond_node, t_entry, "True")
@@ -116,8 +119,7 @@ class FlowBuilder:
             return cond_node, None, True
 
         if isinstance(stmt, (ast.For, ast.While)):
-            header = ast.unparse(stmt)
-            loop = self.add_node(header, "diamond")
+            loop = self.add_node(ast.unparse(stmt), "diamond")
             b_entry, b_exit, b_term = self.stmt_sequence(stmt.body)
             if b_entry:
                 self.add_edge(loop, b_entry, "True")
@@ -155,115 +157,92 @@ class FlowBuilder:
 
         return "\n".join(lines)
 
-# ---------------- Call Graph ----------------
+# ---------------- Call Graph (Python) ----------------
 def generate_call_graph(tree: ast.AST):
-    """
-    Generates a call graph including:
-    - standalone functions
-    - class methods
-    - only user-defined calls
-    """
     call_graph = {}
-    defined_functions = set()
+    defined = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    for name in defined:
+        call_graph[name] = set()
 
-    # First pass: collect function + method names
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            defined_functions.add(node.name)
-            call_graph[node.name] = set()
+    current = None
 
-    logger.debug(f"Defined functions/methods: {defined_functions}")
-
-    current_function = None
-
-    class CallGraphVisitor(ast.NodeVisitor):
+    class Visitor(ast.NodeVisitor):
         def visit_FunctionDef(self, node):
-            nonlocal current_function
-            current_function = node.name
-            logger.debug(f"Entering function: {current_function}")
+            nonlocal current
+            current = node.name
             self.generic_visit(node)
-            logger.debug(f"Leaving function: {current_function}")
-            current_function = None
+            current = None
 
         def visit_Call(self, node):
-            if current_function:
-                func_name = None
-
-                # Direct function call: foo()
+            if current:
+                fn = None
                 if isinstance(node.func, ast.Name):
-                    func_name = node.func.id
-
-                # Method call: obj.foo()
+                    fn = node.func.id
                 elif isinstance(node.func, ast.Attribute):
-                    func_name = node.func.attr
-
-                logger.debug(
-                    f"In {current_function}, found call to: {func_name}"
-                )
-
-                if func_name and func_name in defined_functions:
-                    call_graph[current_function].add(func_name)
-                    logger.debug(
-                        f"Added edge: {current_function} -> {func_name}"
-                    )
-
+                    fn = node.func.attr
+                if fn in defined:
+                    call_graph[current].add(fn)
             self.generic_visit(node)
 
-    CallGraphVisitor().visit(tree)
+    Visitor().visit(tree)
+    return {k: list(v) for k, v in call_graph.items()}
 
-    # IMPORTANT: keep nodes even if they have no edges
-    final_graph = {k: list(v) for k, v in call_graph.items()}
-
-    logger.debug(f"Final call graph: {final_graph}")
-
-    return final_graph
-
-
-def build_callgraph_mermaid(call_graph: dict):
+def build_callgraph_mermaid(graph: dict):
     lines = ["flowchart LR"]
-
-    # Always declare nodes
-    for func in call_graph.keys():
-        lines.append(f'{func}["{func}"]')
-
-    # Add edges
-    for caller, callees in call_graph.items():
+    for f in graph.keys():
+        lines.append(f'{f}["{f}"]')
+    for caller, callees in graph.items():
         for callee in callees:
-            lines.append(f'{caller} --> {callee}')
+            lines.append(f"{caller} --> {callee}")
+    return "\n".join(lines)
 
-    mermaid = "\n".join(lines)
-    logger.debug("Generated Call Graph Mermaid:\n" + mermaid)
-    return mermaid
-
-
-
-#---------------- Cyclomatic Complexity ----------------
-
+# ---------------- Cyclomatic Complexity (Python) ----------------
 def compute_cyclomatic_complexity(func: ast.FunctionDef) -> int:
-    """
-    Cyclomatic Complexity = 1 + number of decision points
-    Decision points:
-      - if
-      - for
-      - while
-      - boolean operators (and/or)
-    """
-    complexity = 1
-
+    c = 1
     for node in ast.walk(func):
         if isinstance(node, (ast.If, ast.For, ast.While)):
-            complexity += 1
-
-        # Count boolean conditions: a and b and c => +2
+            c += 1
         if isinstance(node, ast.BoolOp):
-            complexity += len(node.values) - 1
+            c += len(node.values) - 1
+    return c
 
-    return complexity
+# ---------------- Java Helpers ----------------
+def java_parse(code: str):
+    return javalang.parse.parse(code)
 
+def java_functions(tree):
+    methods = []
+    for _, cls in tree.filter(javalang.tree.ClassDeclaration):
+        for m in cls.methods:
+            methods.append(m)
+    return methods
 
 # ---------------- API ----------------
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
+
+    # ---------- JAVA ----------
+    if request.language.lower() == "java":
+        if not JAVA_ENABLED:
+            return {"error": "Java support not installed. Run: pip install javalang"}
+
+        try:
+            tree = java_parse(request.code)
+        except Exception as e:
+            return {"error": f"Java parse error: {e}"}
+
+        funcs = java_functions(tree)
+        names = [m.name for m in funcs]
+
+        return {
+            "language": "java",
+            "functions": {"count": len(names), "names": names},
+            "flowchart": None,
+            "call_graph": None,
+            "complexity": {m.name: 1 for m in funcs}  # placeholder
+        }
+
+    # ---------- PYTHON ----------
     try:
         tree = ast.parse(request.code)
     except Exception as e:
@@ -272,21 +251,16 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
     functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
     func_names = [f.name for f in functions]
 
-    # Cyclomatic complexity per function
-    complexity = {}
-    for f in functions:
-        complexity[f.name] = compute_cyclomatic_complexity(f)
-
+    complexity = {f.name: compute_cyclomatic_complexity(f) for f in functions}
 
     result = {
+        "language": "python",
         "functions": {"count": len(func_names), "names": func_names},
         "flowchart": None,
         "call_graph": None,
         "complexity": complexity
     }
 
-
-    # Flowchart
     if function_name:
         target = next((f for f in functions if f.name == function_name), None)
         if not target:
@@ -294,11 +268,11 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
         builder = FlowBuilder()
         result["flowchart"] = builder.build_for_function(target)
 
-    # Call graph
-    call_graph = generate_call_graph(tree)
-    result["call_graph"] = build_callgraph_mermaid(call_graph)
+    cg = generate_call_graph(tree)
+    result["call_graph"] = build_callgraph_mermaid(cg)
 
     return result
+
 
 @app.get("/")
 async def root():
