@@ -1,4 +1,3 @@
-# main.py
 import ast
 import re
 import logging
@@ -33,7 +32,7 @@ def escape_label(s: str) -> str:
         .strip()
     )
 
-# ---------------- FLOW BASE ----------------
+# --------------- FLOW BASE -----------------
 class FlowBuilderBase:
     def __init__(self):
         self.nodes = []
@@ -71,7 +70,7 @@ class FlowBuilderBase:
                 lines.append(f"{s} --> {d}")
         return "\n".join(lines)
 
-# ---------------- PYTHON FLOW ----------------
+# --------------- PYTHON FLOW -----------------
 class PythonFlowBuilder(FlowBuilderBase):
     def stmt_sequence(self, stmts):
         entry = last_exit = None
@@ -159,32 +158,148 @@ def extract_java_methods(code: str):
         methods.append({"name": name, "body": body})
     return methods
 
-# ---------------- JAVA FLOW ----------------
+# -------- JAVA SIMPLE AST --------
+def parse_java_block(code, i=0):
+    stmts = []
+
+    def skip_ws(j):
+        while j < len(code) and code[j].isspace():
+            j += 1
+        return j
+
+    def parse_paren(j):
+        depth = 0
+        start = j
+        while j < len(code):
+            if code[j] == "(":
+                depth += 1
+            elif code[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    return code[start + 1 : j], j + 1
+            j += 1
+        return "", j
+
+    i = skip_ws(i)
+
+    while i < len(code):
+        i = skip_ws(i)
+        if i >= len(code):
+            break
+
+        if code[i] == "}":
+            return stmts, i + 1
+
+        if code.startswith("if", i):
+            i += 2
+            cond, i = parse_paren(i)
+            i = skip_ws(i)
+            body, i = parse_java_block(code, i + 1)
+            i = skip_ws(i)
+            else_body = []
+            if code.startswith("else", i):
+                i += 4
+                i = skip_ws(i)
+                else_body, i = parse_java_block(code, i + 1)
+            stmts.append({"type": "if", "cond": cond, "then": body, "else": else_body})
+            continue
+
+        if code.startswith("while", i):
+            i += 5
+            cond, i = parse_paren(i)
+            i = skip_ws(i)
+            body, i = parse_java_block(code, i + 1)
+            stmts.append({"type": "while", "cond": cond, "body": body})
+            continue
+
+        if code.startswith("for", i):
+            i += 3
+            cond, i = parse_paren(i)
+            i = skip_ws(i)
+            body, i = parse_java_block(code, i + 1)
+            stmts.append({"type": "for", "cond": cond, "body": body})
+            continue
+
+        if code.startswith("return", i):
+            j = code.find(";", i)
+            stmts.append({"type": "return", "text": code[i:j]})
+            i = j + 1
+            continue
+
+        j = code.find(";", i)
+        stmts.append({"type": "stmt", "text": code[i:j]})
+        i = j + 1
+
+    return stmts, i
+
+# -------- JAVA FLOW BUILDER --------
 class JavaFlowBuilder(FlowBuilderBase):
-    def build_for_method(self, method):
-        self.nodes, self.edges, self._id = [], [], 0
-        start = self.add_node(f"Method: {method['name']}()", "circle")
-
-        lines = [l.strip() for l in method["body"].split(";") if l.strip()]
+    def build_block(self, stmts, start):
         last = start
+        for s in stmts:
 
-        for line in lines:
-            if line.startswith("return"):
-                node = self.add_node(line)
+            if s["type"] == "stmt":
+                # 🔥 removed trailing semicolon
+                node = self.add_node(s["text"])
+                self.add_edge(last, node)
+                last = node
+                continue
+
+            if s["type"] == "return":
+                node = self.add_node(s["text"])
                 self.add_edge(last, node)
                 last = node
                 break
-            else:
-                node = self.add_node(line + ";")
-                self.add_edge(last, node)
-                last = node
 
-        end_node = self.add_node("End")
-        self.add_edge(last, end_node)
+            if s["type"] == "if":
+                cond = self.add_node(s["cond"], "diamond")
+                self.add_edge(last, cond)
 
+                then_node = self.add_node("Then")
+                self.add_edge(cond, then_node, "True")
+                then_exit = self.build_block(s["then"], then_node)
+
+                merge = self.add_node("Continue")
+
+                if s["else"]:
+                    else_node = self.add_node("Else")
+                    self.add_edge(cond, else_node, "False")
+                    else_exit = self.build_block(s["else"], else_node)
+                    self.add_edge(else_exit, merge)
+                else:
+                    self.add_edge(cond, merge, "False")
+
+                self.add_edge(then_exit, merge)
+                last = merge
+                continue
+
+            if s["type"] in ("while", "for"):
+                cond = self.add_node(s["cond"], "diamond")
+                self.add_edge(last, cond)
+
+                body = self.add_node("Loop body")
+                self.add_edge(cond, body, "True")
+
+                exit_node = self.build_block(s["body"], body)
+                self.add_edge(exit_node, cond)
+
+                after = self.add_node("After loop")
+                self.add_edge(cond, after, "False")
+
+                last = after
+                continue
+
+        return last
+
+    def build_for_method(self, method):
+        self.nodes, self.edges, self._id = [], [], 0
+        start = self.add_node(f"Method: {method['name']}()", "circle")
+        stmts, _ = parse_java_block("{"+method["body"]+"}", 1)
+        end = self.build_block(stmts, start)
+        self.add_edge(end, self.add_node("End"))
         return self.render_mermaid()
 
-# ---------------- CALL GRAPHS ----------------
+# ------------ CALL GRAPHS -------------
 def build_python_call_graph(tree):
     graph = {}
     funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
@@ -224,14 +339,13 @@ def callgraph_mermaid(graph):
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
 
-    # ---------- PYTHON ----------
     if request.language.lower() == "python":
         tree = ast.parse(request.code)
         funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
-        func_names = [f.name for f in funcs]
+        names = [f.name for f in funcs]
 
         result = {
-            "functions": {"count": len(func_names), "names": func_names},
+            "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_python_call_graph(tree)),
         }
@@ -244,7 +358,6 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
 
         return result
 
-    # ---------- JAVA ----------
     if request.language.lower() == "java":
         methods = extract_java_methods(request.code)
         names = [m["name"] for m in methods]
