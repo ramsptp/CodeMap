@@ -21,6 +21,7 @@ class CodeRequest(BaseModel):
     code: str
     language: str = "python"
 
+
 def escape_label(s: str) -> str:
     if s is None:
         return ""
@@ -32,7 +33,8 @@ def escape_label(s: str) -> str:
         .strip()
     )
 
-# --------------- FLOW BASE -----------------
+
+# ---------------- FLOW BASE -----------------
 class FlowBuilderBase:
     def __init__(self):
         self.nodes = []
@@ -70,7 +72,8 @@ class FlowBuilderBase:
                 lines.append(f"{s} --> {d}")
         return "\n".join(lines)
 
-# --------------- PYTHON FLOW -----------------
+
+# ---------------- PYTHON FLOW -----------------
 class PythonFlowBuilder(FlowBuilderBase):
     def stmt_sequence(self, stmts):
         entry = last_exit = None
@@ -135,11 +138,32 @@ class PythonFlowBuilder(FlowBuilderBase):
             self.add_edge(start, entry)
         return self.render_mermaid()
 
-# ---------------- JAVA PARSER ----------------
+
+# ---------------- PYTHON COMPLEXITY -----------------
+def compute_python_complexity(func: ast.FunctionDef) -> int:
+    """
+    Cyclomatic Complexity:
+    base 1 + number of decision points
+    """
+    complexity = 1
+
+    for node in ast.walk(func):
+        if isinstance(node, (ast.If, ast.For, ast.While, ast.AsyncFor)):
+            complexity += 1
+        if isinstance(node, ast.BoolOp):  # and/or conditions
+            complexity += len(node.values) - 1
+        if isinstance(node, ast.Try):
+            complexity += len(node.handlers)
+
+    return complexity
+
+
+# ---------------- JAVA PARSER -----------------
 JAVA_METHOD_REGEX = re.compile(
     r"(public|private|protected)?\s*(static)?\s*[\w<>]+\s+(\w+)\s*\((.*?)\)\s*\{",
     re.MULTILINE,
 )
+
 
 def extract_java_methods(code: str):
     methods = []
@@ -157,6 +181,7 @@ def extract_java_methods(code: str):
         body = code[start : i - 1].strip()
         methods.append({"name": name, "body": body})
     return methods
+
 
 # -------- JAVA SIMPLE AST --------
 def parse_java_block(code, i=0):
@@ -232,14 +257,13 @@ def parse_java_block(code, i=0):
 
     return stmts, i
 
+
 # -------- JAVA FLOW BUILDER --------
 class JavaFlowBuilder(FlowBuilderBase):
     def build_block(self, stmts, start):
         last = start
         for s in stmts:
-
             if s["type"] == "stmt":
-                # 🔥 removed trailing semicolon
                 node = self.add_node(s["text"])
                 self.add_edge(last, node)
                 last = node
@@ -299,6 +323,29 @@ class JavaFlowBuilder(FlowBuilderBase):
         self.add_edge(end, self.add_node("End"))
         return self.render_mermaid()
 
+
+# -------- JAVA COMPLEXITY --------
+def compute_java_complexity(method_body: str) -> int:
+    """
+    Very similar logic:
+    base 1 + number of decision points
+    """
+    stmts, _ = parse_java_block("{"+method_body+"}", 1)
+
+    def walk(nodes):
+        total = 0
+        for s in nodes:
+            if s["type"] in ("if", "while", "for"):
+                total += 1
+            if s["type"] == "if":
+                total += walk(s["then"]) + walk(s["else"])
+            if s["type"] in ("while", "for"):
+                total += walk(s["body"])
+        return total
+
+    return 1 + walk(stmts)
+
+
 # ------------ CALL GRAPHS -------------
 def build_python_call_graph(tree):
     graph = {}
@@ -317,6 +364,7 @@ def build_python_call_graph(tree):
 
     return {k: list(v) for k, v in graph.items()}
 
+
 def build_java_call_graph(methods):
     names = [m["name"] for m in methods]
     graph = {n: [] for n in names}
@@ -325,6 +373,7 @@ def build_java_call_graph(methods):
             if other != m["name"] and re.search(rf"\b{other}\s*\(", m["body"]):
                 graph[m["name"]].append(other)
     return graph
+
 
 def callgraph_mermaid(graph):
     lines = ["flowchart LR"]
@@ -335,19 +384,24 @@ def callgraph_mermaid(graph):
             lines.append(f"{a} --> {b}")
     return "\n".join(lines)
 
+
 # ---------------- API ----------------
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
 
+    # ---------- PYTHON ----------
     if request.language.lower() == "python":
         tree = ast.parse(request.code)
         funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
         names = [f.name for f in funcs]
 
+        complexity = {f.name: compute_python_complexity(f) for f in funcs}
+
         result = {
             "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_python_call_graph(tree)),
+            "complexity": complexity,
         }
 
         if function_name:
@@ -358,14 +412,21 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
 
         return result
 
+    # ---------- JAVA ----------
     if request.language.lower() == "java":
         methods = extract_java_methods(request.code)
         names = [m["name"] for m in methods]
+
+        complexity = {
+            m["name"]: compute_java_complexity(m["body"])
+            for m in methods
+        }
 
         result = {
             "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_java_call_graph(methods)),
+            "complexity": complexity,
         }
 
         if function_name:
@@ -377,6 +438,7 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
         return result
 
     return {"error": "Unsupported language"}
+
 
 @app.get("/")
 async def root():
