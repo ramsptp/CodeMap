@@ -4,7 +4,7 @@ import mermaid from "mermaid";
 
 mermaid.initialize({ startOnLoad: false });
 
-function MermaidChart({ chart }) {
+function MermaidChart({ chart, onNodeClick }) {
   const [svg, setSvg] = useState("");
 
   useEffect(() => {
@@ -17,11 +17,48 @@ function MermaidChart({ chart }) {
 
     mermaid
       .render(id, chart)
-      .then(({ svg }) => setSvg(svg))
-      .catch(() => {
+      .then(({ svg }) => {
+        setSvg(svg);
+
+        // Small delay so DOM exists
+        setTimeout(() => {
+          const nodes = document.querySelectorAll("svg g.node");
+
+          console.log("[Mermaid] Found", nodes.length, "clickable nodes");
+
+          nodes.forEach((node) => {
+            node.style.cursor = "pointer";
+
+            node.onclick = () => {
+              let label =
+                node.getAttribute("id")?.trim() ||
+                node.querySelector("title")?.textContent?.trim() ||
+                node.querySelector("text")?.textContent?.trim() ||
+                node.querySelector("foreignObject")?.textContent?.trim() ||
+                "";
+
+              console.log("[Click] Raw label =", label);
+
+              // normalize IDs like flowchart-foo-0
+              if (label.startsWith("flowchart-")) {
+                const parts = label.split("-");
+                if (parts.length >= 3) {
+                  label = parts.slice(1, parts.length - 1).join("-");
+                }
+              }
+
+              console.log("[Click] Normalized label =", label);
+
+              if (onNodeClick) onNodeClick(label);
+            };
+          });
+        }, 200);
+      })
+      .catch((err) => {
+        console.error(err);
         setSvg("<p style='color:red'>Invalid Mermaid syntax</p>");
       });
-  }, [chart]);
+  }, [chart, onNodeClick]);
 
   return <div dangerouslySetInnerHTML={{ __html: svg }} />;
 }
@@ -33,16 +70,16 @@ function App() {
   const [result, setResult] = useState(null);
   const [functions, setFunctions] = useState([]);
   const [selectedFunc, setSelectedFunc] = useState("");
+
   const [flowchart, setFlowchart] = useState(null);
   const [callGraph, setCallGraph] = useState(null);
   const [complexity, setComplexity] = useState({});
+
   const [view, setView] = useState("flowchart");
   const [error, setError] = useState(null);
 
   const analyzeCode = async (funcName = "") => {
     setError(null);
-    setFlowchart(null);
-    setCallGraph(null);
 
     if (!code.trim()) {
       setError("Please paste some code.");
@@ -55,7 +92,7 @@ function App() {
 
       const response = await axios.post(
         "http://127.0.0.1:8000/analyze",
-        { code, language },     // <—— IMPORTANT
+        { code, language },
         { params }
       );
 
@@ -70,11 +107,24 @@ function App() {
     }
   };
 
+  // when user selects dropdown function
   useEffect(() => {
     if (view === "flowchart" && selectedFunc) {
       analyzeCode(selectedFunc);
     }
   }, [selectedFunc]);
+
+  // when a node is clicked in call graph
+  const handleNodeClick = (label) => {
+    console.log("[ClickHandler] Received:", label);
+    console.log("[Functions list]", functions);
+
+    if (functions.includes(label)) {
+      setSelectedFunc(label);
+      setView("flowchart");
+      analyzeCode(label);
+    }
+  };
 
   return (
     <div style={{ maxWidth: 900, margin: "auto", padding: 20, fontFamily: "Arial" }}>
@@ -93,7 +143,7 @@ function App() {
         </select>
       </div>
 
-      {/* Code input */}
+      {/* Code box */}
       <textarea
         rows={15}
         style={{ width: "100%", fontFamily: "monospace", fontSize: 14 }}
@@ -102,7 +152,6 @@ function App() {
         placeholder="Paste code here..."
       />
 
-      <br />
       <button
         onClick={() => analyzeCode(selectedFunc)}
         style={{ marginTop: 10, padding: "10px 20px" }}
@@ -117,14 +166,8 @@ function App() {
         <div style={{ marginTop: 20, padding: 15, border: "1px solid #ccc" }}>
           <h3>Code Overview</h3>
 
-          <p>
-            <strong>Total Functions:</strong> {result.functions?.count ?? 0}
-          </p>
-
-          <p>
-            <strong>Function Names:</strong>{" "}
-            {result.functions?.names?.join(", ")}
-          </p>
+          <p><strong>Total Functions:</strong> {result.functions?.count ?? 0}</p>
+          <p><strong>Function Names:</strong> {result.functions?.names?.join(", ")}</p>
 
           {Object.keys(complexity).length > 0 && (
             <>
@@ -139,7 +182,7 @@ function App() {
         </div>
       )}
 
-      {/* Toggle views */}
+      {/* View toggle */}
       <div style={{ marginTop: 20 }}>
         <button onClick={() => setView("flowchart")}>Flowchart</button>
         <button onClick={() => setView("callgraph")} style={{ marginLeft: 10 }}>
@@ -147,7 +190,7 @@ function App() {
         </button>
       </div>
 
-      {/* Function picker */}
+      {/* Function selector */}
       {view === "flowchart" && functions.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <h4>Select function:</h4>
@@ -164,7 +207,7 @@ function App() {
         </div>
       )}
 
-      {/* Diagrams */}
+      {/* Charts */}
       <div style={{ marginTop: 30 }}>
         {view === "flowchart" && flowchart && (
           <>
@@ -176,7 +219,7 @@ function App() {
         {view === "callgraph" && callGraph && (
           <>
             <h3>Call Graph</h3>
-            <MermaidChart chart={callGraph} />
+            <MermaidChart chart={callGraph} onNodeClick={handleNodeClick} />
           </>
         )}
       </div>
