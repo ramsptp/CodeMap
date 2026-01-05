@@ -34,7 +34,9 @@ def escape_label(s: str) -> str:
     )
 
 
-# ---------------- FLOW BASE -----------------
+# ------------------------------------------------------------
+# FLOW BASE
+# ------------------------------------------------------------
 class FlowBuilderBase:
     def __init__(self):
         self.nodes = []
@@ -57,6 +59,7 @@ class FlowBuilderBase:
 
     def render_mermaid(self):
         lines = ["flowchart TD"]
+
         for nid, label, shape in self.nodes:
             q = f'"{label}"'
             if shape == "circle":
@@ -65,51 +68,69 @@ class FlowBuilderBase:
                 lines.append(f"{nid}{{{q}}}")
             else:
                 lines.append(f"{nid}[{q}]")
+
         for s, d, lbl in self.edges:
             if lbl:
                 lines.append(f"{s} -->|{escape_label(lbl)}| {d}")
             else:
                 lines.append(f"{s} --> {d}")
+
         return "\n".join(lines)
 
 
-# ---------------- PYTHON FLOW -----------------
+# ------------------------------------------------------------
+# PYTHON FLOW
+# ------------------------------------------------------------
 class PythonFlowBuilder(FlowBuilderBase):
+
     def stmt_sequence(self, stmts):
         entry = last_exit = None
         terminal = False
+
         for stmt in stmts:
             s_entry, s_exit, s_term = self.process_stmt(stmt)
+
             if not s_entry:
                 continue
+
             if entry is None:
                 entry = s_entry
+
             if last_exit:
                 self.add_edge(last_exit, s_entry)
+
             last_exit = s_exit
+
             if s_term:
                 terminal = True
                 break
+
         return entry, last_exit, terminal
 
     def process_stmt(self, stmt):
+
+        # RETURN
         if isinstance(stmt, ast.Return):
             val = ast.unparse(stmt.value) if stmt.value else ""
             node = self.add_node(f"return {val}")
             return node, node, True
 
+        # SIMPLE STATEMENTS
         if isinstance(stmt, (ast.Assign, ast.AugAssign, ast.Expr)):
             node = self.add_node(ast.unparse(stmt))
             return node, node, False
 
+        # IF
         if isinstance(stmt, ast.If):
             cond_node = self.add_node(ast.unparse(stmt.test), "diamond")
+
             t_entry, t_exit, t_term = self.stmt_sequence(stmt.body)
             if t_entry:
                 self.add_edge(cond_node, t_entry, "True")
 
             f_entry = f_exit = None
             f_term = False
+
             if stmt.orelse:
                 f_entry, f_exit, f_term = self.stmt_sequence(stmt.orelse)
                 if f_entry:
@@ -127,6 +148,42 @@ class PythonFlowBuilder(FlowBuilderBase):
 
             return cond_node, None, True
 
+        # WHILE
+        if isinstance(stmt, ast.While):
+            cond = self.add_node(ast.unparse(stmt.test), "diamond")
+
+            body_entry, body_exit, body_term = self.stmt_sequence(stmt.body)
+
+            if body_entry:
+                self.add_edge(cond, body_entry, "True")
+
+            if body_exit and not body_term:
+                self.add_edge(body_exit, cond)
+
+            after = self.add_node("After loop")
+            self.add_edge(cond, after, "False")
+
+            return cond, after, False
+
+        # FOR
+        if isinstance(stmt, ast.For):
+            label = f"for {ast.unparse(stmt.target)} in {ast.unparse(stmt.iter)}"
+            cond = self.add_node(label, "diamond")
+
+            body_entry, body_exit, body_term = self.stmt_sequence(stmt.body)
+
+            if body_entry:
+                self.add_edge(cond, body_entry, "True")
+
+            if body_exit and not body_term:
+                self.add_edge(body_exit, cond)
+
+            after = self.add_node("After loop")
+            self.add_edge(cond, after, "False")
+
+            return cond, after, False
+
+        # fallback
         node = self.add_node(ast.unparse(stmt))
         return node, node, False
 
@@ -139,31 +196,13 @@ class PythonFlowBuilder(FlowBuilderBase):
         return self.render_mermaid()
 
 
-# ---------------- PYTHON COMPLEXITY -----------------
-def compute_python_complexity(func: ast.FunctionDef) -> int:
-    """
-    Cyclomatic Complexity:
-    base 1 + number of decision points
-    """
-    complexity = 1
-
-    for node in ast.walk(func):
-        if isinstance(node, (ast.If, ast.For, ast.While, ast.AsyncFor)):
-            complexity += 1
-        if isinstance(node, ast.BoolOp):  # and/or conditions
-            complexity += len(node.values) - 1
-        if isinstance(node, ast.Try):
-            complexity += len(node.handlers)
-
-    return complexity
-
-
-# ---------------- JAVA PARSER -----------------
+# ------------------------------------------------------------
+# JAVA PARSER
+# ------------------------------------------------------------
 JAVA_METHOD_REGEX = re.compile(
     r"(public|private|protected)?\s*(static)?\s*[\w<>]+\s+(\w+)\s*\((.*?)\)\s*\{",
     re.MULTILINE,
 )
-
 
 def extract_java_methods(code: str):
     methods = []
@@ -178,12 +217,11 @@ def extract_java_methods(code: str):
             elif code[i] == "}":
                 brace -= 1
             i += 1
-        body = code[start : i - 1].strip()
+        body = code[start:i-1].strip()
         methods.append({"name": name, "body": body})
     return methods
 
 
-# -------- JAVA SIMPLE AST --------
 def parse_java_block(code, i=0):
     stmts = []
 
@@ -201,7 +239,7 @@ def parse_java_block(code, i=0):
             elif code[j] == ")":
                 depth -= 1
                 if depth == 0:
-                    return code[start + 1 : j], j + 1
+                    return code[start + 1: j], j + 1
             j += 1
         return "", j
 
@@ -215,6 +253,7 @@ def parse_java_block(code, i=0):
         if code[i] == "}":
             return stmts, i + 1
 
+        # IF
         if code.startswith("if", i):
             i += 2
             cond, i = parse_paren(i)
@@ -229,6 +268,7 @@ def parse_java_block(code, i=0):
             stmts.append({"type": "if", "cond": cond, "then": body, "else": else_body})
             continue
 
+        # WHILE
         if code.startswith("while", i):
             i += 5
             cond, i = parse_paren(i)
@@ -237,6 +277,7 @@ def parse_java_block(code, i=0):
             stmts.append({"type": "while", "cond": cond, "body": body})
             continue
 
+        # FOR
         if code.startswith("for", i):
             i += 3
             cond, i = parse_paren(i)
@@ -245,24 +286,35 @@ def parse_java_block(code, i=0):
             stmts.append({"type": "for", "cond": cond, "body": body})
             continue
 
+        # RETURN
         if code.startswith("return", i):
             j = code.find(";", i)
             stmts.append({"type": "return", "text": code[i:j]})
             i = j + 1
             continue
 
+        # NORMAL STATEMENT — (FILTER OUT FOR-HEADER FRAGMENTS)
         j = code.find(";", i)
-        stmts.append({"type": "stmt", "text": code[i:j]})
+        text = code[i:j].strip()
+
+        # ignore trivial loop-header fragments like "5", "n--", "i++"
+        if text and not re.fullmatch(r"(\d+|[A-Za-z_][A-Za-z0-9_]*\+\+?|--[A-Za-z_][A-Za-z0-9_]*)", text):
+            stmts.append({"type": "stmt", "text": text})
+
         i = j + 1
 
     return stmts, i
 
 
-# -------- JAVA FLOW BUILDER --------
+# ------------------------------------------------------------
+# JAVA FLOW
+# ------------------------------------------------------------
 class JavaFlowBuilder(FlowBuilderBase):
     def build_block(self, stmts, start):
         last = start
+
         for s in stmts:
+
             if s["type"] == "stmt":
                 node = self.add_node(s["text"])
                 self.add_edge(last, node)
@@ -279,16 +331,12 @@ class JavaFlowBuilder(FlowBuilderBase):
                 cond = self.add_node(s["cond"], "diamond")
                 self.add_edge(last, cond)
 
-                then_node = self.add_node("Then")
-                self.add_edge(cond, then_node, "True")
-                then_exit = self.build_block(s["then"], then_node)
+                then_exit = self.build_block(s["then"], cond)
 
                 merge = self.add_node("Continue")
 
                 if s["else"]:
-                    else_node = self.add_node("Else")
-                    self.add_edge(cond, else_node, "False")
-                    else_exit = self.build_block(s["else"], else_node)
+                    else_exit = self.build_block(s["else"], cond)
                     self.add_edge(else_exit, merge)
                 else:
                     self.add_edge(cond, merge, "False")
@@ -324,33 +372,14 @@ class JavaFlowBuilder(FlowBuilderBase):
         return self.render_mermaid()
 
 
-# -------- JAVA COMPLEXITY --------
-def compute_java_complexity(method_body: str) -> int:
-    """
-    Very similar logic:
-    base 1 + number of decision points
-    """
-    stmts, _ = parse_java_block("{"+method_body+"}", 1)
-
-    def walk(nodes):
-        total = 0
-        for s in nodes:
-            if s["type"] in ("if", "while", "for"):
-                total += 1
-            if s["type"] == "if":
-                total += walk(s["then"]) + walk(s["else"])
-            if s["type"] in ("while", "for"):
-                total += walk(s["body"])
-        return total
-
-    return 1 + walk(stmts)
-
-
-# ------------ CALL GRAPHS -------------
+# ------------------------------------------------------------
+# CALL GRAPHS
+# ------------------------------------------------------------
 def build_python_call_graph(tree):
     graph = {}
     funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
     names = {f.name for f in funcs}
+
     for f in funcs:
         graph[f.name] = set()
 
@@ -368,40 +397,44 @@ def build_python_call_graph(tree):
 def build_java_call_graph(methods):
     names = [m["name"] for m in methods]
     graph = {n: [] for n in names}
+
     for m in methods:
         for other in names:
             if other != m["name"] and re.search(rf"\b{other}\s*\(", m["body"]):
                 graph[m["name"]].append(other)
+
     return graph
 
 
 def callgraph_mermaid(graph):
     lines = ["flowchart LR"]
+
     for f in graph:
         lines.append(f'{f}["{f}"]')
+
     for a, bs in graph.items():
         for b in bs:
             lines.append(f"{a} --> {b}")
+
     return "\n".join(lines)
 
 
-# ---------------- API ----------------
+# ------------------------------------------------------------
+# API
+# ------------------------------------------------------------
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
 
-    # ---------- PYTHON ----------
+    # PYTHON
     if request.language.lower() == "python":
         tree = ast.parse(request.code)
         funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
         names = [f.name for f in funcs]
 
-        complexity = {f.name: compute_python_complexity(f) for f in funcs}
-
         result = {
             "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_python_call_graph(tree)),
-            "complexity": complexity,
         }
 
         if function_name:
@@ -412,21 +445,15 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
 
         return result
 
-    # ---------- JAVA ----------
+    # JAVA
     if request.language.lower() == "java":
         methods = extract_java_methods(request.code)
         names = [m["name"] for m in methods]
-
-        complexity = {
-            m["name"]: compute_java_complexity(m["body"])
-            for m in methods
-        }
 
         result = {
             "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_java_call_graph(methods)),
-            "complexity": complexity,
         }
 
         if function_name:
