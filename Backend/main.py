@@ -33,6 +33,43 @@ def escape_label(s: str) -> str:
         .strip()
     )
 
+# ------------------------------------------------------------
+# COMPLEXITY CALCULATORS (NEW)
+# ------------------------------------------------------------
+def calculate_python_complexity(node):
+    """
+    Calculates Cyclomatic Complexity for a Python AST function node.
+    M = E - N + 2P (simplified: 1 + number of branching points)
+    """
+    complexity = 1
+    # We count branching statements
+    for child in ast.walk(node):
+        if isinstance(child, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler)):
+            complexity += 1
+        # Optional: You can also count 'and'/'or' boolean operators as branches
+        # if isinstance(child, ast.BoolOp):
+        #     complexity += len(child.values) - 1
+    return complexity
+
+
+def calculate_java_complexity(body: str):
+    """
+    Estimates Cyclomatic Complexity for Java by counting control flow keywords.
+    """
+    complexity = 1
+    # Simple keyword counting. 
+    # Note: This is an approximation. It might overcount strings containing "if"
+    # or comments, but works well for the 'lightweight' approach.
+    keywords = ["if", "for", "while", "case", "catch"]
+    
+    for kw in keywords:
+        # Regex looks for whole words to avoid matching "tiff" or "effort"
+        # Matches: "if (" or "if " 
+        matches = re.findall(rf"\b{kw}\b", body)
+        complexity += len(matches)
+        
+    return complexity
+
 
 # ------------------------------------------------------------
 # FLOW BASE
@@ -431,10 +468,14 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
         funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
         names = [f.name for f in funcs]
 
+        # Calculate Complexity
+        complexity_map = {f.name: calculate_python_complexity(f) for f in funcs}
+
         result = {
             "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_python_call_graph(tree)),
+            "complexity": complexity_map
         }
 
         if function_name:
@@ -450,10 +491,14 @@ async def analyze_code(request: CodeRequest, function_name: str = Query(None)):
         methods = extract_java_methods(request.code)
         names = [m["name"] for m in methods]
 
+        # Calculate Complexity
+        complexity_map = {m["name"]: calculate_java_complexity(m["body"]) for m in methods}
+
         result = {
             "functions": {"count": len(names), "names": names},
             "flowchart": None,
             "call_graph": callgraph_mermaid(build_java_call_graph(methods)),
+            "complexity": complexity_map
         }
 
         if function_name:
