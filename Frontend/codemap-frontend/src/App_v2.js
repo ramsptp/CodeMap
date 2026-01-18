@@ -13,7 +13,7 @@ import dagre from 'dagre';
 import { 
   Folder, Code, GitBranch, Play, Settings, 
   Columns, ClipboardList, Plus, ArrowLeft,
-  FileText, Layers, FileCode
+  FileText, Layers
 } from "lucide-react"; 
 
 // ===========================================
@@ -51,43 +51,43 @@ def greet_user(name):
         }
         return result;
     }
-
-    public void checkStatus(int code) {
-        if (code == 200) {
-            System.out.println("OK");
-        } else {
-            System.out.println("Error");
-        }
-    }
 }`
 };
 
 // ===========================================
-// 1. CUSTOM NODE DEFINITIONS
+// 1. CUSTOM NODE DEFINITIONS (Borders Only!)
 // ===========================================
 
-// OVAL (Terminator)
+// OVAL (Terminator - Start/End)
 const TerminatorNode = ({ data }) => {
+  const labelLower = data.label ? data.label.toLowerCase() : "";
+  const isStart = labelLower.startsWith("start");
+  
+  // Neon Colors
+  const borderColor = isStart ? "#4caf50" : "#ff5252"; // Green vs Red
+  const textColor = isStart ? "#4caf50" : "#ff5252"; // Matching Text Color
+
   return (
     <div style={{
       padding: "10px 20px",
       borderRadius: "25px",
-      background: "#333",
-      color: "#fff",
-      border: "2px solid #fff",
+      background: "#1e1e1e", // Dark BG
+      color: textColor,      // Colored Text
+      border: `2px solid ${borderColor}`, // Colored Border
       textAlign: "center",
       minWidth: "100px",
       fontSize: "12px",
-      fontWeight: "bold"
+      fontWeight: "bold",
+      boxShadow: `0 0 10px ${borderColor}20` // Subtle Glow
     }}>
       {data.label}
-      <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
-      <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
+      <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
     </div>
   );
 };
 
-// RECTANGLE (Process)
+// RECTANGLE (Process - Statements)
 const ProcessNode = ({ data }) => {
   if (!data.label) {
       return (
@@ -99,14 +99,17 @@ const ProcessNode = ({ data }) => {
   }
   return (
     <div style={{
-      padding: "10px",
+      padding: "12px",
       borderRadius: "4px",
-      background: "#1e1e1e",
-      color: "#d4d4d4",
-      border: "1px solid #777",
-      textAlign: "center",
-      minWidth: "100px",
-      fontSize: "12px"
+      background: "#1e1e1e", // Dark BG
+      color: "#e0e0e0",      // White/Grey Text
+      border: "1px solid #fff", // White Border
+      textAlign: "left",
+      minWidth: "120px",
+      maxWidth: "250px",
+      fontSize: "12px",
+      fontFamily: "monospace",
+      boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
     }}>
       {data.label}
       <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
@@ -115,20 +118,23 @@ const ProcessNode = ({ data }) => {
   );
 };
 
-// DIAMOND (Decision)
+// DIAMOND (Decision - Yellow Border)
 const DecisionNode = ({ data }) => {
   return (
     <div style={{ position: "relative", width: "100px", height: "80px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Rotated Square for Border */}
       <div style={{
         position: "absolute",
         width: "60px",
         height: "60px",
-        background: "#333",
-        border: "2px solid #dcb67a",
+        background: "#1e1e1e", // Dark BG
+        border: "2px solid #dcb67a", // Yellow/Gold Border
         transform: "rotate(45deg)",
-        zIndex: -1
+        zIndex: -1,
+        boxShadow: "0 0 10px rgba(220, 182, 122, 0.2)"
       }} />
-      <div style={{ zIndex: 1, fontSize: "10px", textAlign: "center", color: "#fff", maxWidth: "80px" }}>
+      
+      <div style={{ zIndex: 1, fontSize: "10px", textAlign: "center", color: "#dcb67a", maxWidth: "80px", fontWeight: "bold" }}>
         {data.label}
       </div>
       <Handle type="target" position={Position.Top} style={{ top: 10, background: '#555' }} />
@@ -137,27 +143,31 @@ const DecisionNode = ({ data }) => {
   );
 };
 
-// HEXAGON (Loop)
+// HEXAGON (Loop - Blue Border)
 const LoopNode = ({ data }) => {
   return (
-    <div style={{ position: "relative", width: "150px", height: "60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ position: "relative", width: "160px", height: "60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Outer Shape (Acts as Border) */}
       <div style={{
         position: "absolute",
         width: "100%",
         height: "100%",
-        background: "#00d8ff", 
+        background: "#00d8ff", // Cyan Border Color
         clipPath: "polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%)",
-        zIndex: -2
+        zIndex: -2,
+        boxShadow: "0 0 10px rgba(0, 216, 255, 0.3)"
       }} />
+       
+       {/* Inner Shape (Acts as Dark Background) */}
        <div style={{
         position: "absolute",
-        inset: 2, 
-        background: "#222", 
+        inset: 2, // 2px Border Thickness
+        background: "#1e1e1e", 
         clipPath: "polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%)",
         zIndex: -1
       }} />
 
-      <div style={{ zIndex: 1, fontSize: "11px", textAlign: "center", color: "#00d8ff", maxWidth: "120px", fontWeight: "bold" }}>
+      <div style={{ zIndex: 1, fontSize: "11px", textAlign: "center", color: "#00d8ff", maxWidth: "130px", fontWeight: "bold" }}>
         {data.label}
       </div>
       <Handle type="target" position={Position.Top} style={{ top: 0, background: '#555' }} />
@@ -173,13 +183,14 @@ const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
 
 const getLayoutedElements = (nodes, edges) => {
-  dagreGraph.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 60 }); 
+  dagreGraph.setGraph({ rankdir: 'TB', nodesep: 70, ranksep: 70 });
 
   nodes.forEach((node) => {
     let width = 150;
-    let height = 50;
+    let height = 60;
     if (node.type === "decision") { height = 80; width = 100; }
-    if (node.type === "loop") { height = 60; width = 150; } 
+    if (node.type === "loop") { height = 60; width = 160; }
+    if (node.type === "process" && node.data.label) { height = 50; width = 180; }
     dagreGraph.setNode(node.id, { width, height });
   });
 
@@ -191,10 +202,16 @@ const getLayoutedElements = (nodes, edges) => {
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
+    // Center offsets
+    let xOffset = 75;
+    if (node.type === 'decision') xOffset = 50;
+    if (node.type === 'loop') xOffset = 80;
+    if (node.type === 'process' && node.data.label) xOffset = 90;
+
     return {
       ...node,
       position: {
-        x: nodeWithPosition.x - (node.type === 'decision' ? 50 : node.type === 'loop' ? 75 : 75),
+        x: nodeWithPosition.x - xOffset,
         y: nodeWithPosition.y - 25,
       },
     };
@@ -251,22 +268,18 @@ const FlowGraph = ({ data, onNodeClick }) => {
 // ===========================================
 const NewApp = () => {
   const [sidebarView, setSidebarView] = useState("snippets"); 
-  const [activeFile, setActiveFile] = useState("Scratchpad"); 
   const [viewMode, setViewMode] = useState("split"); 
   const [currentFunc, setCurrentFunc] = useState(null); 
-  
-  // NEW: Language State
-  const [language, setLanguage] = useState("python"); // 'python' or 'java'
+  const [language, setLanguage] = useState("python");
   const [snippetCode, setSnippetCode] = useState(SNIPPETS.python);
   
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Switch Language & Template
   const handleLanguageChange = (lang) => {
     setLanguage(lang);
     setSnippetCode(SNIPPETS[lang]);
-    setAnalysisResult(null); // Clear previous results
+    setAnalysisResult(null);
     setCurrentFunc(null);
   };
 
@@ -277,7 +290,7 @@ const NewApp = () => {
     try {
       const payload = { 
         code: codeToSend, 
-        language: language // Send selected language
+        language: language
       };
       
       if (specificFunction) {
@@ -354,18 +367,8 @@ const NewApp = () => {
           <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
              {/* LANGUAGE TOGGLE */}
              <div style={{ display: "flex", background: "#333", borderRadius: "4px", overflow: "hidden" }}>
-                <button 
-                  onClick={() => handleLanguageChange("python")}
-                  style={{...langBtnStyle, background: language === "python" ? "#4caf50" : "transparent", color: language === "python" ? "white" : "#aaa"}}
-                >
-                  Python
-                </button>
-                <button 
-                  onClick={() => handleLanguageChange("java")}
-                  style={{...langBtnStyle, background: language === "java" ? "#f89820" : "transparent", color: language === "java" ? "white" : "#aaa"}}
-                >
-                  Java
-                </button>
+                <button onClick={() => handleLanguageChange("python")} style={{...langBtnStyle, background: language === "python" ? "#4caf50" : "transparent", color: language === "python" ? "white" : "#aaa"}}>Python</button>
+                <button onClick={() => handleLanguageChange("java")} style={{...langBtnStyle, background: language === "java" ? "#f89820" : "transparent", color: language === "java" ? "white" : "#aaa"}}>Java</button>
              </div>
 
              <div style={{ width: 1, height: 20, background: "#555" }} />

@@ -62,7 +62,17 @@ class ReactFlowBuilder:
             }
             if label:
                 edge["label"] = label
-                edge["labelStyle"] = {"fill": "#fff", "fontWeight": 700}
+                
+                # --- COLOR LOGIC FOR LABELS ---
+                text_color = "#fff" # Default White
+                if label == "True":
+                    text_color = "#4caf50" # Green
+                elif label == "False":
+                    text_color = "#ff5252" # Red
+                elif label == "Loop":
+                    text_color = "#00d8ff" # Cyan/Blue (Matches Hexagon)
+                
+                edge["labelStyle"] = {"fill": text_color, "fontWeight": 700}
                 edge["labelShowBg"] = True
                 edge["labelBgStyle"] = {"fill": "#1e1e1e"}
             self.edges.append(edge)
@@ -142,7 +152,7 @@ class PythonFlowBuilder(ReactFlowBuilder):
             
             cond = self.add_node(label, "loop")
             body_entry, body_exit, body_term = self.stmt_sequence(stmt.body)
-            if body_entry: self.add_edge(cond, body_entry, "Loop")
+            if body_entry: self.add_edge(cond, body_entry, "Loop") # <-- This label is now Blue
             if body_exit and not body_term: self.add_edge(body_exit, cond)
             after = self.add_node("Exit Loop", "process")
             self.add_edge(cond, after, "Done")
@@ -216,7 +226,6 @@ class JavaFlowBuilder(ReactFlowBuilder):
         stmts = parse_java_structure(body_text)
         
         for stmt in stmts:
-            # 1. FOR LOOP
             if stmt.startswith("for"):
                 header_match = re.search(r"for\s*\((.*?)\)", stmt)
                 header = header_match.group(0) if header_match else "For Loop"
@@ -224,21 +233,19 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 loop_node = self.add_node(header, "loop")
                 self.add_edge(last_node, loop_node)
                 
-                # EXTRACT BODY
                 body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
-                # UPDATED: Show the actual content, not "Loop Body"
                 body_node = self.add_node(body_content, "process")
                 
-                self.add_edge(loop_node, body_node, "True")
+                # CHANGED: "True" -> "Loop" to trigger blue color
+                self.add_edge(loop_node, body_node, "Loop")
                 self.add_edge(body_node, loop_node) 
                 
                 merge = self.add_node("", "process") 
                 self.add_edge(loop_node, merge, "Done")
                 last_node = merge
                 
-            # 2. WHILE LOOP
             elif stmt.startswith("while"):
                 header_match = re.search(r"while\s*\((.*?)\)", stmt)
                 header = header_match.group(0) if header_match else "While Loop"
@@ -249,17 +256,16 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
-                # UPDATED: Show actual content
                 body_node = self.add_node(body_content, "process")
                 
-                self.add_edge(loop_node, body_node, "True")
+                # CHANGED: "True" -> "Loop" to trigger blue color
+                self.add_edge(loop_node, body_node, "Loop")
                 self.add_edge(body_node, loop_node)
                 
                 merge = self.add_node("", "process")
                 self.add_edge(loop_node, merge, "Done")
                 last_node = merge
 
-            # 3. IF STATEMENT
             elif stmt.startswith("if"):
                 header_match = re.search(r"if\s*\((.*?)\)", stmt)
                 header = header_match.group(0) if header_match else "If"
@@ -267,7 +273,6 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 decision = self.add_node(header, "decision")
                 self.add_edge(last_node, decision)
                 
-                # True Branch - Extract Body
                 body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
@@ -279,13 +284,11 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 self.add_edge(decision, merge, "False")
                 last_node = merge
 
-            # 4. RETURN
             elif stmt.startswith("return"):
                 node = self.add_node(stmt, "terminator")
                 self.add_edge(last_node, node)
                 last_node = None
             
-            # 5. GENERIC
             else:
                 node = self.add_node(stmt, "process")
                 if last_node: self.add_edge(last_node, node)
