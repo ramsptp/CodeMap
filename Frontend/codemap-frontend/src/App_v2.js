@@ -13,11 +13,11 @@ import dagre from 'dagre';
 import { 
   Folder, Code, GitBranch, Play, Settings, 
   Columns, ClipboardList, Plus, ArrowLeft,
-  FileText, Layers
+  FileText, Layers, Trash2, FileCode
 } from "lucide-react"; 
 
 // ===========================================
-// 0. DEFAULT SNIPPETS
+// 0. DATA & TEMPLATES
 // ===========================================
 const SNIPPETS = {
   python: 
@@ -30,14 +30,7 @@ const SNIPPETS = {
         result = 1
         for i in range(1, n + 1):
             result *= i
-        return result
-
-def greet_user(name):
-    print(f"Hello, {name}!")
-    if name == "Alice":
-        print("Welcome back, Alice!")
-    else:
-        print("Nice to meet you!")`,
+        return result`,
 
   java: 
 `public class LogicDemo {
@@ -54,31 +47,47 @@ def greet_user(name):
 }`
 };
 
+const DEFAULT_FILES = {
+  "main.py": 
+`# Main Entry Point
+def main():
+    print("Starting App...")
+    x = 10
+    if x > 5:
+        print("Running logic...")
+    print("Done")`,
+
+  "utils.py":
+`def helper():
+    return "I am a helper"`,
+    
+  "scratchpad.py": 
+`# Scratchpad
+# Go to 'Snippets' tab to load templates here!`
+};
+
 // ===========================================
-// 1. CUSTOM NODE DEFINITIONS (Borders Only!)
+// 1. CUSTOM NODE DEFINITIONS (Neon Borders)
 // ===========================================
 
-// OVAL (Terminator - Start/End)
 const TerminatorNode = ({ data }) => {
   const labelLower = data.label ? data.label.toLowerCase() : "";
   const isStart = labelLower.startsWith("start");
-  
-  // Neon Colors
-  const borderColor = isStart ? "#4caf50" : "#ff5252"; // Green vs Red
-  const textColor = isStart ? "#4caf50" : "#ff5252"; // Matching Text Color
+  const borderColor = isStart ? "#4caf50" : "#ff5252"; 
+  const textColor = isStart ? "#4caf50" : "#ff5252"; 
 
   return (
     <div style={{
       padding: "10px 20px",
       borderRadius: "25px",
-      background: "#1e1e1e", // Dark BG
-      color: textColor,      // Colored Text
-      border: `2px solid ${borderColor}`, // Colored Border
+      background: "#1e1e1e", 
+      color: textColor,      
+      border: `2px solid ${borderColor}`, 
       textAlign: "center",
       minWidth: "100px",
       fontSize: "12px",
       fontWeight: "bold",
-      boxShadow: `0 0 10px ${borderColor}20` // Subtle Glow
+      boxShadow: `0 0 10px ${borderColor}20` 
     }}>
       {data.label}
       <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
@@ -87,7 +96,6 @@ const TerminatorNode = ({ data }) => {
   );
 };
 
-// RECTANGLE (Process - Statements)
 const ProcessNode = ({ data }) => {
   if (!data.label) {
       return (
@@ -101,9 +109,9 @@ const ProcessNode = ({ data }) => {
     <div style={{
       padding: "12px",
       borderRadius: "4px",
-      background: "#1e1e1e", // Dark BG
-      color: "#e0e0e0",      // White/Grey Text
-      border: "1px solid #fff", // White Border
+      background: "#1e1e1e", 
+      color: "#e0e0e0",      
+      border: "1px solid #fff", 
       textAlign: "left",
       minWidth: "120px",
       maxWidth: "250px",
@@ -118,22 +126,19 @@ const ProcessNode = ({ data }) => {
   );
 };
 
-// DIAMOND (Decision - Yellow Border)
 const DecisionNode = ({ data }) => {
   return (
     <div style={{ position: "relative", width: "100px", height: "80px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {/* Rotated Square for Border */}
       <div style={{
         position: "absolute",
         width: "60px",
         height: "60px",
-        background: "#1e1e1e", // Dark BG
-        border: "2px solid #dcb67a", // Yellow/Gold Border
+        background: "#1e1e1e", 
+        border: "2px solid #dcb67a", 
         transform: "rotate(45deg)",
         zIndex: -1,
         boxShadow: "0 0 10px rgba(220, 182, 122, 0.2)"
       }} />
-      
       <div style={{ zIndex: 1, fontSize: "10px", textAlign: "center", color: "#dcb67a", maxWidth: "80px", fontWeight: "bold" }}>
         {data.label}
       </div>
@@ -143,30 +148,25 @@ const DecisionNode = ({ data }) => {
   );
 };
 
-// HEXAGON (Loop - Blue Border)
 const LoopNode = ({ data }) => {
   return (
     <div style={{ position: "relative", width: "160px", height: "60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {/* Outer Shape (Acts as Border) */}
       <div style={{
         position: "absolute",
         width: "100%",
         height: "100%",
-        background: "#00d8ff", // Cyan Border Color
+        background: "#00d8ff", 
         clipPath: "polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%)",
         zIndex: -2,
         boxShadow: "0 0 10px rgba(0, 216, 255, 0.3)"
       }} />
-       
-       {/* Inner Shape (Acts as Dark Background) */}
        <div style={{
         position: "absolute",
-        inset: 2, // 2px Border Thickness
+        inset: 2, 
         background: "#1e1e1e", 
         clipPath: "polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%)",
         zIndex: -1
       }} />
-
       <div style={{ zIndex: 1, fontSize: "11px", textAlign: "center", color: "#00d8ff", maxWidth: "130px", fontWeight: "bold" }}>
         {data.label}
       </div>
@@ -177,7 +177,7 @@ const LoopNode = ({ data }) => {
 };
 
 // ===========================================
-// 2. LAYOUT ENGINE (Dagre)
+// 2. LAYOUT ENGINE
 // ===========================================
 const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
@@ -202,7 +202,6 @@ const getLayoutedElements = (nodes, edges) => {
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    // Center offsets
     let xOffset = 75;
     if (node.type === 'decision') xOffset = 50;
     if (node.type === 'loop') xOffset = 80;
@@ -221,7 +220,7 @@ const getLayoutedElements = (nodes, edges) => {
 };
 
 // ===========================================
-// 3. GRAPH WRAPPER
+// 3. GRAPH COMPONENT
 // ===========================================
 const FlowGraph = ({ data, onNodeClick }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -267,25 +266,74 @@ const FlowGraph = ({ data, onNodeClick }) => {
 // 4. MAIN APP
 // ===========================================
 const NewApp = () => {
-  const [sidebarView, setSidebarView] = useState("snippets"); 
+  // UI State
+  const [sidebarView, setSidebarView] = useState("explorer"); 
   const [viewMode, setViewMode] = useState("split"); 
   const [currentFunc, setCurrentFunc] = useState(null); 
   const [language, setLanguage] = useState("python");
-  const [snippetCode, setSnippetCode] = useState(SNIPPETS.python);
   
+  // File System State
+  const [files, setFiles] = useState(DEFAULT_FILES);
+  const [activeFileName, setActiveFileName] = useState("main.py");
+  
+  // Backend State
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLanguageChange = (lang) => {
-    setLanguage(lang);
-    setSnippetCode(SNIPPETS[lang]);
-    setAnalysisResult(null);
+  // --- FILE ACTIONS ---
+  const handleFileClick = (filename) => {
+    setActiveFileName(filename);
     setCurrentFunc(null);
+    setAnalysisResult(null);
   };
 
+  const handleCreateFile = () => {
+    const name = prompt("Enter file name (e.g., helper.py):");
+    if (name) {
+        if (files[name]) {
+            alert("File already exists!");
+            return;
+        }
+        setFiles(prev => ({ ...prev, [name]: "# New File" }));
+        setActiveFileName(name);
+        setSidebarView("explorer");
+    }
+  };
+
+  const handleDeleteFile = (e, name) => {
+      e.stopPropagation();
+      if (Object.keys(files).length === 1) {
+          alert("Cannot delete the last file!");
+          return;
+      }
+      if (window.confirm(`Delete ${name}?`)) {
+          const newFiles = { ...files };
+          delete newFiles[name];
+          setFiles(newFiles);
+          if (activeFileName === name) {
+              setActiveFileName(Object.keys(newFiles)[0]);
+          }
+      }
+  };
+
+  const handleCodeChange = (e) => {
+      const newContent = e.target.value;
+      setFiles(prev => ({ ...prev, [activeFileName]: newContent }));
+  };
+
+  // --- SNIPPET ACTIONS ---
+  // Overwrites the ACTIVE file with the snippet
+  const handleLoadSnippet = (lang) => {
+      if (window.confirm(`Overwrite '${activeFileName}' with ${lang} template?`)) {
+          setFiles(prev => ({ ...prev, [activeFileName]: SNIPPETS[lang] }));
+          setLanguage(lang);
+      }
+  };
+
+  // --- ANALYSIS ---
   const handleAnalyze = async (specificFunction = null) => {
     setLoading(true);
-    const codeToSend = sidebarView === "snippets" ? snippetCode : "# File content...";
+    const codeToSend = files[activeFileName];
     
     try {
       const payload = { 
@@ -322,27 +370,76 @@ const NewApp = () => {
        
        {/* 1. ACTIVITY BAR */}
       <div style={{ width: "50px", background: "#333", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: "25px" }}>
-        <Folder size={24} color={sidebarView === "explorer" ? "#fff" : "#777"} style={{cursor: "pointer"}} onClick={() => setSidebarView("explorer")} />
-        <GitBranch size={24} color={sidebarView === "git" ? "#fff" : "#777"} style={{cursor: "pointer"}} onClick={() => setSidebarView("git")} />
-        <ClipboardList size={24} color={sidebarView === "snippets" ? "#fff" : "#777"} style={{cursor: "pointer"}} onClick={() => setSidebarView("snippets")} />
+        
+        {/* EXPLORER ICON */}
+        <div 
+          onClick={() => setSidebarView("explorer")} 
+          style={{ cursor: "pointer", borderLeft: sidebarView === "explorer" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
+          title="Project Explorer"
+        >
+            <Folder size={24} color={sidebarView === "explorer" ? "#fff" : "#777"} />
+        </div>
+
+        {/* SNIPPETS ICON */}
+        <div 
+          onClick={() => setSidebarView("snippets")} 
+          style={{ cursor: "pointer", borderLeft: sidebarView === "snippets" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
+          title="Templates"
+        >
+             <ClipboardList size={24} color={sidebarView === "snippets" ? "#fff" : "#777"} />
+        </div>
+
+        <GitBranch size={24} color="#555" style={{cursor: "not-allowed"}} />
         <Settings size={24} color="#777" style={{ marginTop: "auto", cursor: "pointer" }} />
       </div>
 
       {/* 2. SIDEBAR CONTENT */}
       <div style={{ width: "250px", background: "#252526", display: "flex", flexDirection: "column", borderRight: "1px solid #1e1e1e" }}>
-        <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase" }}>
-          {sidebarView === "snippets" ? "Scratchpad" : sidebarView === "git" ? "Source Control" : "Explorer"}
-        </div>
         
+        {/* VIEW A: EXPLORER */}
+        {sidebarView === "explorer" && (
+            <>
+                <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>FILES</span>
+                    <Plus size={16} style={{ cursor: "pointer" }} onClick={handleCreateFile} title="New File"/>
+                </div>
+                <div style={{ padding: "0 10px" }}>
+                    {Object.keys(files).map(filename => (
+                        <FileItem 
+                            key={filename} 
+                            name={filename} 
+                            active={activeFileName === filename} 
+                            onClick={() => handleFileClick(filename)}
+                            onDelete={(e) => handleDeleteFile(e, filename)}
+                        />
+                    ))}
+                </div>
+            </>
+        )}
+
+        {/* VIEW B: SNIPPETS */}
         {sidebarView === "snippets" && (
-           <div style={{ padding: "10px" }}>
-              <button style={{...actionBtnStyle, background: "#3e3e42", marginBottom: "15px", display: "flex", justifyContent: "center", alignItems: "center", gap: "5px"}}>
-                 <Plus size={14} /> New Snippet
-              </button>
-              <div style={{fontSize: "0.8rem", color: "#888", marginBottom: "10px"}}>Templates</div>
-              <FileItem name="Python Logic" type="code" active={language === "python"} onClick={() => handleLanguageChange("python")} />
-              <FileItem name="Java Class" type="code" active={language === "java"} onClick={() => handleLanguageChange("java")} />
-           </div>
+            <>
+                <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase" }}>
+                    TEMPLATES
+                </div>
+                <div style={{ padding: "0 10px" }}>
+                    <div style={{fontSize: "0.8rem", color: "#888", marginBottom: "15px", fontStyle: "italic", borderBottom: "1px solid #333", paddingBottom: "10px"}}>
+                        Click to overwrite <strong>{activeFileName}</strong>
+                    </div>
+                    
+                    <FileItem 
+                        name="Python Logic" 
+                        active={language === "python"} 
+                        onClick={() => handleLoadSnippet("python")} 
+                    />
+                    <FileItem 
+                        name="Java Class" 
+                        active={language === "java"} 
+                        onClick={() => handleLoadSnippet("java")} 
+                    />
+                </div>
+            </>
         )}
       </div>
 
@@ -351,28 +448,20 @@ const NewApp = () => {
         {/* TOOLBAR */}
         <div style={{ height: "40px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", padding: "0 15px", justifyContent: "space-between", background: "#1e1e1e" }}>
           
+          {/* File & Breadcrumb */}
           <div style={{ fontSize: "0.8rem", color: "#888", display: "flex", alignItems: "center", gap: "10px" }}>
-            {currentFunc ? (
-               <>
-                 <button onClick={() => handleAnalyze(null)} style={{...iconBtnStyle, color: "#4caf50", display: "flex", alignItems: "center", gap: "5px", fontWeight: "bold"}}>
-                   <ArrowLeft size={14} /> Back to Overview
-                 </button>
-                 <span>/ {currentFunc}()</span>
-               </>
-            ) : (
-               <span>Project Overview</span>
-            )}
+             <FileCode size={14} color="#4caf50"/>
+             <span style={{fontWeight: "bold", color: "#d4d4d4"}}>{activeFileName}</span>
+             {currentFunc && (
+                 <>
+                  <span style={{color: "#555"}}>/</span> 
+                  <span style={{color: "#4caf50"}}>{currentFunc}()</span>
+                 </>
+             )}
           </div>
 
           <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-             {/* LANGUAGE TOGGLE */}
-             <div style={{ display: "flex", background: "#333", borderRadius: "4px", overflow: "hidden" }}>
-                <button onClick={() => handleLanguageChange("python")} style={{...langBtnStyle, background: language === "python" ? "#4caf50" : "transparent", color: language === "python" ? "white" : "#aaa"}}>Python</button>
-                <button onClick={() => handleLanguageChange("java")} style={{...langBtnStyle, background: language === "java" ? "#f89820" : "transparent", color: language === "java" ? "white" : "#aaa"}}>Java</button>
-             </div>
-
-             <div style={{ width: 1, height: 20, background: "#555" }} />
-
+             
              {/* VIEW SWITCHER */}
              <div style={{ display: "flex", gap: "5px" }}>
                 <button onClick={() => setViewMode("code")} title="Code Only" style={{...iconBtnStyle, background: viewMode === "code" ? "#3e3e42" : "transparent"}}> <FileText size={14} /> </button>
@@ -389,7 +478,8 @@ const NewApp = () => {
           {(viewMode === "code" || viewMode === "split") && (
             <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "1px solid #333", height: "100%" }}>
               <textarea 
-                value={snippetCode} onChange={(e) => setSnippetCode(e.target.value)}
+                value={files[activeFileName]} 
+                onChange={handleCodeChange}
                 style={editorStyle} spellCheck="false"
               />
             </div>
@@ -398,13 +488,13 @@ const NewApp = () => {
           {(viewMode === "graph" || viewMode === "split") && (
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
                {loading ? (
-                 <div style={centerMsgStyle}>Analyzing...</div>
+                 <div style={centerMsgStyle}>Analyzing {activeFileName}...</div>
                ) : analysisResult && analysisResult.graph_data ? (
                  <FlowGraph data={analysisResult.graph_data} onNodeClick={onGraphNodeClick} />
                ) : (
                  <div style={centerMsgStyle}>
                     <p>[ React Flow Engine ]</p>
-                    <p style={{fontSize: "0.8rem"}}>Ready to Analyze</p>
+                    <p style={{fontSize: "0.8rem"}}>Select a file and click Analyze</p>
                  </div>
                )}
             </div>
@@ -443,17 +533,23 @@ const NewApp = () => {
 };
 
 // --- STYLES ---
-const FileItem = ({ name, type, active, onClick }) => (
+const FileItem = ({ name, active, onClick, onDelete }) => (
   <div 
     onClick={onClick}
-    style={{ padding: "4px 10px", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", color: active ? "white" : "#888", background: active ? "#3e3e42" : "transparent", fontSize: "0.9rem", borderRadius: "3px" }}>
-    <Code size={14} color={active ? "#4caf50" : "#888"}/> {name}
+    style={{ 
+        padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: "6px", cursor: "pointer", color: active ? "white" : "#888", 
+        background: active ? "#3e3e42" : "transparent", fontSize: "0.9rem", borderRadius: "3px", marginBottom: "2px"
+    }}>
+    <div style={{display: "flex", alignItems: "center", gap: "8px"}}>
+        <FileText size={14} color={active ? "#4caf50" : "#888"}/> {name}
+    </div>
+    {/* Only show delete if the function is provided (not for templates) */}
+    {onDelete && <Trash2 size={12} color={active ? "#ff5252" : "#555"} onClick={onDelete} />}
   </div>
 );
 const iconBtnStyle = { background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "3px" };
-const langBtnStyle = { border: "none", cursor: "pointer", padding: "4px 12px", fontSize: "0.8rem", fontWeight: "bold" };
 const runBtnStyle = { background: "#2da042", border: "none", color: "white", padding: "5px 12px", borderRadius: "3px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" };
-const actionBtnStyle = { width: "100%", padding: "6px", border: "none", color: "white", cursor: "pointer", borderRadius: "3px" };
 const editorStyle = { width: "100%", height: "100%", background: "#1e1e1e", color: "#d4d4d4", border: "none", padding: "20px", fontFamily: "monospace", fontSize: "14px", resize: "none", outline: "none" };
 const centerMsgStyle = { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", color: "#555", textAlign: "center" };
 
