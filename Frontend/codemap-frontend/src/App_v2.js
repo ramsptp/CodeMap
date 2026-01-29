@@ -13,7 +13,7 @@ import dagre from 'dagre';
 import { 
   Folder, Code, GitBranch, Play, Settings, 
   Columns, ClipboardList, Plus, ArrowLeft,
-  FileText, Layers, Trash2, FileCode
+  FileText, Layers, Trash2, FileCode, ChevronDown
 } from "lucide-react"; 
 
 // ===========================================
@@ -270,7 +270,7 @@ const NewApp = () => {
   const [sidebarView, setSidebarView] = useState("explorer"); 
   const [viewMode, setViewMode] = useState("split"); 
   const [currentFunc, setCurrentFunc] = useState(null); 
-  const [language, setLanguage] = useState("python");
+  const [language, setLanguage] = useState("python"); // Controls Snippets Template
   
   // File System State
   const [files, setFiles] = useState(DEFAULT_FILES);
@@ -280,7 +280,8 @@ const NewApp = () => {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // --- FILE ACTIONS ---
+  // --- ACTIONS ---
+
   const handleFileClick = (filename) => {
     setActiveFileName(filename);
     setCurrentFunc(null);
@@ -322,9 +323,14 @@ const NewApp = () => {
   };
 
   // --- SNIPPET ACTIONS ---
+  // Change language state for snippets ONLY
+  const handleSnippetLanguageChange = (e) => {
+      setLanguage(e.target.value);
+  };
+
   // Overwrites the ACTIVE file with the snippet
   const handleLoadSnippet = (lang) => {
-      if (window.confirm(`Overwrite '${activeFileName}' with ${lang} template?`)) {
+      if (window.confirm(`Overwrite '${activeFileName}' with ${lang} snippet?`)) {
           setFiles(prev => ({ ...prev, [activeFileName]: SNIPPETS[lang] }));
           setLanguage(lang);
       }
@@ -333,12 +339,22 @@ const NewApp = () => {
   // --- ANALYSIS ---
   const handleAnalyze = async (specificFunction = null) => {
     setLoading(true);
+    
+    // 1. Determine Language Logic
+    // If in Snippets view, trust the dropdown.
+    // If in Explorer view, AUTO-DETECT from filename.
+    let langToSend = language; 
+    if (sidebarView === "explorer") {
+        if (activeFileName.endsWith(".java")) langToSend = "java";
+        else langToSend = "python"; // Default to python
+    }
+
     const codeToSend = files[activeFileName];
     
     try {
       const payload = { 
         code: codeToSend, 
-        language: language
+        language: langToSend // Use the smart detected language
       };
       
       if (specificFunction) {
@@ -384,7 +400,7 @@ const NewApp = () => {
         <div 
           onClick={() => setSidebarView("snippets")} 
           style={{ cursor: "pointer", borderLeft: sidebarView === "snippets" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
-          title="Templates"
+          title="Code Snippets"
         >
              <ClipboardList size={24} color={sidebarView === "snippets" ? "#fff" : "#777"} />
         </div>
@@ -421,7 +437,7 @@ const NewApp = () => {
         {sidebarView === "snippets" && (
             <>
                 <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase" }}>
-                    TEMPLATES
+                    SNIPPETS
                 </div>
                 <div style={{ padding: "0 10px" }}>
                     <div style={{fontSize: "0.8rem", color: "#888", marginBottom: "15px", fontStyle: "italic", borderBottom: "1px solid #333", paddingBottom: "10px"}}>
@@ -462,6 +478,24 @@ const NewApp = () => {
 
           <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
              
+             {/* LANGUAGE INDICATOR / DROPDOWN */}
+             {sidebarView === "snippets" ? (
+                 <select 
+                    value={language} 
+                    onChange={handleSnippetLanguageChange}
+                    style={dropdownStyle}
+                 >
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                 </select>
+             ) : (
+                 <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: "bold", background: "#252526", padding: "4px 8px", borderRadius: "3px" }}>
+                    {activeFileName.endsWith(".java") ? "JAVA FILE" : "PYTHON FILE"}
+                 </div>
+             )}
+
+             <div style={{ width: 1, height: 20, background: "#555" }} />
+
              {/* VIEW SWITCHER */}
              <div style={{ display: "flex", gap: "5px" }}>
                 <button onClick={() => setViewMode("code")} title="Code Only" style={{...iconBtnStyle, background: viewMode === "code" ? "#3e3e42" : "transparent"}}> <FileText size={14} /> </button>
@@ -469,7 +503,7 @@ const NewApp = () => {
                 <button onClick={() => setViewMode("graph")} title="Graph Only" style={{...iconBtnStyle, background: viewMode === "graph" ? "#3e3e42" : "transparent"}}> <Layers size={14} /> </button>
              </div>
              
-             <button style={runBtnStyle} onClick={() => handleAnalyze(null)}><Play size={14} fill="white" /> Analyze</button>
+             <button style={runBtnStyle} onClick={() => handleAnalyze(null)}><Play size={14} fill="white" /> Analyze File</button>
           </div>
         </div>
 
@@ -544,13 +578,14 @@ const FileItem = ({ name, active, onClick, onDelete }) => (
     <div style={{display: "flex", alignItems: "center", gap: "8px"}}>
         <FileText size={14} color={active ? "#4caf50" : "#888"}/> {name}
     </div>
-    {/* Only show delete if the function is provided (not for templates) */}
     {onDelete && <Trash2 size={12} color={active ? "#ff5252" : "#555"} onClick={onDelete} />}
   </div>
 );
 const iconBtnStyle = { background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "3px" };
 const runBtnStyle = { background: "#2da042", border: "none", color: "white", padding: "5px 12px", borderRadius: "3px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" };
+const actionBtnStyle = { width: "100%", padding: "6px", border: "none", color: "white", cursor: "pointer", borderRadius: "3px" };
 const editorStyle = { width: "100%", height: "100%", background: "#1e1e1e", color: "#d4d4d4", border: "none", padding: "20px", fontFamily: "monospace", fontSize: "14px", resize: "none", outline: "none" };
 const centerMsgStyle = { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", color: "#555", textAlign: "center" };
+const dropdownStyle = { background: "#252526", color: "#d4d4d4", border: "1px solid #333", padding: "4px 8px", borderRadius: "4px", fontSize: "0.8rem", outline: "none", cursor: "pointer" };
 
 export default NewApp;
