@@ -19,7 +19,7 @@ import {
 // ===========================================
 // 0. DATA & TEMPLATES
 // ===========================================
-const SNIPPETS = {
+const DEFAULT_TEMPLATES = {
   python: 
 `def calculate_factorial(n):
     if n < 0:
@@ -67,7 +67,7 @@ def main():
 };
 
 // ===========================================
-// 1. CUSTOM NODE DEFINITIONS (Neon Borders)
+// 1. CUSTOM NODE DEFINITIONS
 // ===========================================
 
 const TerminatorNode = ({ data }) => {
@@ -270,11 +270,15 @@ const NewApp = () => {
   const [sidebarView, setSidebarView] = useState("explorer"); 
   const [viewMode, setViewMode] = useState("split"); 
   const [currentFunc, setCurrentFunc] = useState(null); 
-  const [language, setLanguage] = useState("python"); // Controls Snippets Template
+  const [language, setLanguage] = useState("python"); // Snippet Language Dropdown State
   
-  // File System State
+  // 1. FILE SYSTEM STATE (Explorer)
   const [files, setFiles] = useState(DEFAULT_FILES);
   const [activeFileName, setActiveFileName] = useState("main.py");
+
+  // 2. SNIPPET MEMORY STATE (Independent Buffers)
+  // This ensures Python snippet changes don't vanish when you switch to Java
+  const [snippetMemory, setSnippetMemory] = useState(DEFAULT_TEMPLATES);
   
   // Backend State
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -317,22 +321,28 @@ const NewApp = () => {
       }
   };
 
+  // --- EDITOR CHANGE HANDLER ---
   const handleCodeChange = (e) => {
       const newContent = e.target.value;
-      setFiles(prev => ({ ...prev, [activeFileName]: newContent }));
+      
+      if (sidebarView === "explorer") {
+          // Update File System
+          setFiles(prev => ({ ...prev, [activeFileName]: newContent }));
+      } else {
+          // Update Snippet Memory (for the current language)
+          setSnippetMemory(prev => ({ ...prev, [language]: newContent }));
+      }
   };
 
   // --- SNIPPET ACTIONS ---
-  // Change language state for snippets ONLY
-  const handleSnippetLanguageChange = (e) => {
-      setLanguage(e.target.value);
-  };
-
-  // Overwrites the ACTIVE file with the snippet
+  // Overwrites the ACTIVE file with the CURRENT Snippet buffer
   const handleLoadSnippet = (lang) => {
-      if (window.confirm(`Overwrite '${activeFileName}' with ${lang} snippet?`)) {
-          setFiles(prev => ({ ...prev, [activeFileName]: SNIPPETS[lang] }));
-          setLanguage(lang);
+      const contentToLoad = snippetMemory[lang]; // Use the memory, not the default!
+      if (window.confirm(`Overwrite '${activeFileName}' with your ${lang} snippet?`)) {
+          setFiles(prev => ({ ...prev, [activeFileName]: contentToLoad }));
+          
+          // Switch to explorer so they can see the file updated
+          setSidebarView("explorer"); 
       }
   };
 
@@ -341,20 +351,24 @@ const NewApp = () => {
     setLoading(true);
     
     // 1. Determine Language Logic
-    // If in Snippets view, trust the dropdown.
-    // If in Explorer view, AUTO-DETECT from filename.
-    let langToSend = language; 
-    if (sidebarView === "explorer") {
-        if (activeFileName.endsWith(".java")) langToSend = "java";
-        else langToSend = "python"; // Default to python
-    }
+    let langToSend = "python";
+    let codeToSend = "";
 
-    const codeToSend = files[activeFileName];
+    if (sidebarView === "explorer") {
+        // Auto-detect from file extension
+        if (activeFileName.endsWith(".java")) langToSend = "java";
+        else langToSend = "python";
+        codeToSend = files[activeFileName];
+    } else {
+        // Use explicit dropdown choice in Snippets mode
+        langToSend = language;
+        codeToSend = snippetMemory[language];
+    }
     
     try {
       const payload = { 
         code: codeToSend, 
-        language: langToSend // Use the smart detected language
+        language: langToSend
       };
       
       if (specificFunction) {
@@ -387,7 +401,6 @@ const NewApp = () => {
        {/* 1. ACTIVITY BAR */}
       <div style={{ width: "50px", background: "#333", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: "25px" }}>
         
-        {/* EXPLORER ICON */}
         <div 
           onClick={() => setSidebarView("explorer")} 
           style={{ cursor: "pointer", borderLeft: sidebarView === "explorer" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
@@ -396,7 +409,6 @@ const NewApp = () => {
             <Folder size={24} color={sidebarView === "explorer" ? "#fff" : "#777"} />
         </div>
 
-        {/* SNIPPETS ICON */}
         <div 
           onClick={() => setSidebarView("snippets")} 
           style={{ cursor: "pointer", borderLeft: sidebarView === "snippets" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
@@ -441,19 +453,26 @@ const NewApp = () => {
                 </div>
                 <div style={{ padding: "0 10px" }}>
                     <div style={{fontSize: "0.8rem", color: "#888", marginBottom: "15px", fontStyle: "italic", borderBottom: "1px solid #333", paddingBottom: "10px"}}>
-                        Click to overwrite <strong>{activeFileName}</strong>
+                        Select a template below to load into the snippet editor.
                     </div>
                     
+                    {/* Buttons just switch the ACTIVE snippet view, they don't overwrite files immediately */}
                     <FileItem 
-                        name="Python Logic" 
+                        name="Python Template" 
                         active={language === "python"} 
-                        onClick={() => handleLoadSnippet("python")} 
+                        onClick={() => setLanguage("python")} 
                     />
                     <FileItem 
-                        name="Java Class" 
+                        name="Java Template" 
                         active={language === "java"} 
-                        onClick={() => handleLoadSnippet("java")} 
+                        onClick={() => setLanguage("java")} 
                     />
+
+                    <div style={{marginTop: "20px"}}>
+                        <button style={actionBtnStyle} onClick={() => handleLoadSnippet(language)}>
+                            Inject to {activeFileName}
+                        </button>
+                    </div>
                 </div>
             </>
         )}
@@ -464,10 +483,15 @@ const NewApp = () => {
         {/* TOOLBAR */}
         <div style={{ height: "40px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", padding: "0 15px", justifyContent: "space-between", background: "#1e1e1e" }}>
           
-          {/* File & Breadcrumb */}
+          {/* Breadcrumbs */}
           <div style={{ fontSize: "0.8rem", color: "#888", display: "flex", alignItems: "center", gap: "10px" }}>
              <FileCode size={14} color="#4caf50"/>
-             <span style={{fontWeight: "bold", color: "#d4d4d4"}}>{activeFileName}</span>
+             {sidebarView === "explorer" ? (
+                 <span style={{fontWeight: "bold", color: "#d4d4d4"}}>{activeFileName}</span>
+             ) : (
+                 <span style={{fontWeight: "bold", color: "#f89820"}}>Snippet: {language.toUpperCase()}</span>
+             )}
+             
              {currentFunc && (
                  <>
                   <span style={{color: "#555"}}>/</span> 
@@ -478,11 +502,11 @@ const NewApp = () => {
 
           <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
              
-             {/* LANGUAGE INDICATOR / DROPDOWN */}
+             {/* CONDITIONAL LANGUAGE CONTROL */}
              {sidebarView === "snippets" ? (
                  <select 
                     value={language} 
-                    onChange={handleSnippetLanguageChange}
+                    onChange={(e) => setLanguage(e.target.value)}
                     style={dropdownStyle}
                  >
                     <option value="python">Python</option>
@@ -503,7 +527,10 @@ const NewApp = () => {
                 <button onClick={() => setViewMode("graph")} title="Graph Only" style={{...iconBtnStyle, background: viewMode === "graph" ? "#3e3e42" : "transparent"}}> <Layers size={14} /> </button>
              </div>
              
-             <button style={runBtnStyle} onClick={() => handleAnalyze(null)}><Play size={14} fill="white" /> Analyze File</button>
+             <button style={runBtnStyle} onClick={() => handleAnalyze(null)}>
+                 <Play size={14} fill="white" /> 
+                 {sidebarView === "snippets" ? " Analyze Snippet" : " Analyze File"}
+             </button>
           </div>
         </div>
 
@@ -512,7 +539,7 @@ const NewApp = () => {
           {(viewMode === "code" || viewMode === "split") && (
             <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "1px solid #333", height: "100%" }}>
               <textarea 
-                value={files[activeFileName]} 
+                value={sidebarView === "explorer" ? files[activeFileName] : snippetMemory[language]} 
                 onChange={handleCodeChange}
                 style={editorStyle} spellCheck="false"
               />
@@ -522,13 +549,15 @@ const NewApp = () => {
           {(viewMode === "graph" || viewMode === "split") && (
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
                {loading ? (
-                 <div style={centerMsgStyle}>Analyzing {activeFileName}...</div>
+                 <div style={centerMsgStyle}>Analyzing...</div>
                ) : analysisResult && analysisResult.graph_data ? (
                  <FlowGraph data={analysisResult.graph_data} onNodeClick={onGraphNodeClick} />
                ) : (
                  <div style={centerMsgStyle}>
                     <p>[ React Flow Engine ]</p>
-                    <p style={{fontSize: "0.8rem"}}>Select a file and click Analyze</p>
+                    <p style={{fontSize: "0.8rem"}}>
+                        {sidebarView === "explorer" ? "Select a file to map" : "Write a snippet to map"}
+                    </p>
                  </div>
                )}
             </div>
@@ -583,7 +612,7 @@ const FileItem = ({ name, active, onClick, onDelete }) => (
 );
 const iconBtnStyle = { background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "3px" };
 const runBtnStyle = { background: "#2da042", border: "none", color: "white", padding: "5px 12px", borderRadius: "3px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" };
-const actionBtnStyle = { width: "100%", padding: "6px", border: "none", color: "white", cursor: "pointer", borderRadius: "3px" };
+const actionBtnStyle = { width: "100%", padding: "8px", border: "none", color: "white", background: "#4caf50", cursor: "pointer", borderRadius: "3px", fontWeight: "bold", fontSize: "0.8rem" };
 const editorStyle = { width: "100%", height: "100%", background: "#1e1e1e", color: "#d4d4d4", border: "none", padding: "20px", fontFamily: "monospace", fontSize: "14px", resize: "none", outline: "none" };
 const centerMsgStyle = { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", color: "#555", textAlign: "center" };
 const dropdownStyle = { background: "#252526", color: "#d4d4d4", border: "1px solid #333", padding: "4px 8px", borderRadius: "4px", fontSize: "0.8rem", outline: "none", cursor: "pointer" };
