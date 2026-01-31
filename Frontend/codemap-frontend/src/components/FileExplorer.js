@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
     Folder, FolderOpen, FileText, FileCode, ChevronRight, ChevronDown,
-    Plus, Trash2, Upload, FolderPlus, FilePlus, MoreVertical, X
+    Plus, Trash2, Upload, FolderPlus, FilePlus, MoreVertical, X, GripVertical
 } from 'lucide-react';
 import './FileExplorer.css';
 
@@ -53,12 +53,14 @@ const TreeNode = ({
     onCreateFolder,
     onDelete,
     dependencies,
-    onContextMenu
+    onContextMenu,
+    onMoveItem
 }) => {
     const isFolder = node.type === 'folder';
     const fullPath = getFilePath(path);
     const isExpanded = expandedFolders.has(fullPath);
     const isSelected = selectedFile === fullPath;
+    const [dragOver, setDragOver] = useState(false);
 
     // Dependency indicators
     const fileDeps = dependencies?.imports?.get(fullPath) || [];
@@ -79,14 +81,64 @@ const TreeNode = ({
         onContextMenu(e, fullPath, node);
     };
 
+    // Drag and Drop handlers
+    const handleDragStart = (e) => {
+        e.stopPropagation();
+        e.dataTransfer.setData('text/plain', fullPath);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Only allow dropping on folders
+        if (isFolder) {
+            e.dataTransfer.dropEffect = 'move';
+            setDragOver(true);
+        }
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(false);
+
+        if (!isFolder) return;
+
+        const sourcePath = e.dataTransfer.getData('text/plain');
+        if (!sourcePath || sourcePath === fullPath) return;
+
+        // Don't allow dropping a folder into itself or its children
+        if (fullPath.startsWith(sourcePath + '/')) return;
+
+        onMoveItem(sourcePath, fullPath);
+    };
+
     return (
         <div className="tree-node">
             <div
-                className={`tree-item ${isSelected ? 'selected' : ''} ${isFolder ? 'folder' : 'file'}`}
+                className={`tree-item ${isSelected ? 'selected' : ''} ${isFolder ? 'folder' : 'file'} ${dragOver ? 'drag-over' : ''}`}
                 style={{ paddingLeft: `${depth * 16 + 8}px` }}
                 onClick={handleClick}
                 onContextMenu={handleContextMenu}
+                draggable={true}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
             >
+                {/* Drag handle */}
+                <span className="drag-handle">
+                    <GripVertical size={12} />
+                </span>
+
                 {/* Expand/Collapse for folders */}
                 {isFolder ? (
                     <span className="tree-chevron">
@@ -150,6 +202,7 @@ const TreeNode = ({
                                 onDelete={onDelete}
                                 dependencies={dependencies}
                                 onContextMenu={onContextMenu}
+                                onMoveItem={onMoveItem}
                             />
                         ))}
                 </div>
@@ -369,6 +422,55 @@ const FileExplorer = ({
     // Close context menu when clicking outside
     const closeContextMenu = () => setContextMenu(null);
 
+    // Handle moving items via drag and drop
+    const handleMoveItem = (sourcePath, targetFolderPath) => {
+        setFileTree(prev => {
+            const newTree = JSON.parse(JSON.stringify(prev));
+
+            // Get source item
+            const sourcePathArray = sourcePath.split('/').filter(p => p);
+            const sourceItemName = sourcePathArray.pop();
+            const sourceParent = getNodeAtPath(newTree, sourcePathArray);
+
+            if (!sourceParent || !sourceParent.children || !sourceParent.children[sourceItemName]) {
+                console.error('Source not found:', sourcePath);
+                return prev;
+            }
+
+            // Get the item to move
+            const itemToMove = sourceParent.children[sourceItemName];
+
+            // Get target folder
+            const targetPathArray = targetFolderPath ? targetFolderPath.split('/').filter(p => p) : [];
+            const targetFolder = getNodeAtPath(newTree, targetPathArray);
+
+            if (!targetFolder || targetFolder.type !== 'folder') {
+                console.error('Target folder not found:', targetFolderPath);
+                return prev;
+            }
+
+            // Check if item with same name already exists
+            if (targetFolder.children[sourceItemName]) {
+                alert(`An item named "${sourceItemName}" already exists in the target folder.`);
+                return prev;
+            }
+
+            // Remove from source
+            delete sourceParent.children[sourceItemName];
+
+            // Add to target
+            targetFolder.children[sourceItemName] = itemToMove;
+
+            console.log(`Moved ${sourcePath} to ${targetFolderPath}/${sourceItemName}`);
+            return newTree;
+        });
+
+        // Expand target folder to show the moved item
+        if (targetFolderPath) {
+            setExpandedFolders(prev => new Set([...prev, targetFolderPath]));
+        }
+    };
+
     // File upload handlers
     const handleFileInputChange = (e) => {
         if (onUploadFiles && e.target.files) {
@@ -488,6 +590,7 @@ const FileExplorer = ({
                             onDelete={handleDelete}
                             dependencies={dependencies}
                             onContextMenu={handleContextMenu}
+                            onMoveItem={handleMoveItem}
                         />
                     ))}
             </div>
