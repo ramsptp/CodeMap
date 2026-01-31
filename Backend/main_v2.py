@@ -70,7 +70,9 @@ class ReactFlowBuilder:
                 elif label == "False":
                     text_color = "#ff5252" # Red
                 elif label == "Loop":
-                    text_color = "#00d8ff" # Cyan/Blue (Matches Hexagon)
+                    text_color = "#00d8ff" # Cyan/Blue
+                elif label == "Done":
+                    text_color = "#dcb67a" # Gold
                 
                 edge["labelStyle"] = {"fill": text_color, "fontWeight": 700}
                 edge["labelShowBg"] = True
@@ -99,83 +101,132 @@ def calculate_java_complexity(body: str):
     return complexity
 
 # ==========================================
-# 3. PYTHON PARSER
+# 3. IMPROVED PYTHON PARSER
 # ==========================================
 class PythonFlowBuilder(ReactFlowBuilder):
     def stmt_sequence(self, stmts):
+        """Process a sequence of statements and return entry, exit, and terminal flag"""
         entry = last_exit = None
         terminal = False
 
         for stmt in stmts:
             s_entry, s_exit, s_term = self.process_stmt(stmt)
-            if not s_entry: continue
+            if not s_entry: 
+                continue
 
-            if entry is None: entry = s_entry
-            if last_exit: self.add_edge(last_exit, s_entry)
+            # Connect to previous statement
+            if entry is None: 
+                entry = s_entry
+            if last_exit: 
+                self.add_edge(last_exit, s_entry)
             
             last_exit = s_exit
+            
+            # If we hit a terminal statement (return), stop processing
             if s_term:
                 terminal = True
                 break
+                
         return entry, last_exit, terminal
 
     def process_stmt(self, stmt):
+        """Process a single statement and return (entry_node, exit_node, is_terminal)"""
+        
+        # RETURN STATEMENT
         if isinstance(stmt, ast.Return):
             val = ast.unparse(stmt.value) if stmt.value else "None"
             node = self.add_node(f"return {val}", "terminator")
             return node, node, True
         
+        # IF STATEMENT (IMPROVED BRANCHING)
         if isinstance(stmt, ast.If):
             cond_node = self.add_node(f"If: {ast.unparse(stmt.test)}", "decision")
+            
+            # Process TRUE branch
             t_entry, t_exit, t_term = self.stmt_sequence(stmt.body)
-            if t_entry: self.add_edge(cond_node, t_entry, "True")
-
+            if t_entry: 
+                self.add_edge(cond_node, t_entry, "True")
+            
+            # Process FALSE branch (else/elif)
             f_entry = f_exit = None
             f_term = False
             if stmt.orelse:
                 f_entry, f_exit, f_term = self.stmt_sequence(stmt.orelse)
-                if f_entry: self.add_edge(cond_node, f_entry, "False")
-
+                if f_entry: 
+                    self.add_edge(cond_node, f_entry, "False")
+            
+            # MERGE LOGIC - Create explicit merge point
+            # Only create merge if at least one branch continues (not terminal)
             if not (t_term and f_term):
-                merge = self.add_node("", "process") 
-                if t_exit and not t_term: self.add_edge(t_exit, merge)
-                if f_exit and not f_term: self.add_edge(f_exit, merge)
-                if not stmt.orelse: self.add_edge(cond_node, merge, "False")
+                merge = self.add_node("", "process")  # Empty label = merge point
+                
+                # Connect TRUE branch to merge if it doesn't terminate
+                if t_exit and not t_term: 
+                    self.add_edge(t_exit, merge)
+                
+                # Connect FALSE branch to merge
+                if f_exit and not f_term: 
+                    self.add_edge(f_exit, merge)
+                elif not stmt.orelse:  # No else clause - direct connection
+                    self.add_edge(cond_node, merge, "False")
+                
                 return cond_node, merge, False
+            
+            # Both branches terminate - no merge needed
             return cond_node, None, True
         
+        # LOOP STATEMENTS
         if isinstance(stmt, (ast.While, ast.For)):
             if isinstance(stmt, ast.While):
                 label = f"While {ast.unparse(stmt.test)}"
             else:
                 label = f"For {ast.unparse(stmt.target)} in {ast.unparse(stmt.iter)}"
             
-            cond = self.add_node(label, "loop")
+            loop_node = self.add_node(label, "loop")
+            
+            # Process loop body
             body_entry, body_exit, body_term = self.stmt_sequence(stmt.body)
-            if body_entry: self.add_edge(cond, body_entry, "Loop") # <-- This label is now Blue
-            if body_exit and not body_term: self.add_edge(body_exit, cond)
+            if body_entry: 
+                self.add_edge(loop_node, body_entry, "Loop")
+            
+            # Loop back (only if body doesn't terminate)
+            if body_exit and not body_term: 
+                self.add_edge(body_exit, loop_node)
+            
+            # Exit point after loop
             after = self.add_node("Exit Loop", "process")
-            self.add_edge(cond, after, "Done")
-            return cond, after, False
+            self.add_edge(loop_node, after, "Done")
+            
+            return loop_node, after, False
 
+        # REGULAR STATEMENT
         try:
             label = ast.unparse(stmt)
         except:
             label = "Statement"
+        
         node = self.add_node(label, "process")
         return node, node, False
 
     def build_for_function(self, func):
+        """Build flowchart for a specific function"""
         self.nodes, self.edges, self._id_counter = [], [], 0
+        
         start = self.add_node(f"Start: {func.name}", "terminator")
-        entry, _, _ = self.stmt_sequence(func.body)
-        if entry: self.add_edge(start, entry)
+        entry, exit_node, _ = self.stmt_sequence(func.body)
+        
+        if entry: 
+            self.add_edge(start, entry)
+        
         return self.get_data()
 
 # ==========================================
-# 4. JAVA PARSER
+# 4. IMPROVED JAVA PARSER
 # ==========================================
-JAVA_METHOD_REGEX = re.compile(r"(public|private|protected)?\s*(static)?\s*[\w<>]+\s+(\w+)\s*\((.*?)\)\s*\{", re.MULTILINE)
+JAVA_METHOD_REGEX = re.compile(
+    r"(public|private|protected)?\s*(static)?\s*[\w<>]+\s+(\w+)\s*\((.*?)\)\s*\{", 
+    re.MULTILINE
+)
 
 def extract_java_methods(code: str):
     methods = []
@@ -193,6 +244,7 @@ def extract_java_methods(code: str):
     return methods
 
 def parse_java_structure(code):
+    """Parse Java code into statements"""
     statements = []
     current = []
     depth_brace = 0
@@ -219,6 +271,7 @@ def parse_java_structure(code):
 
 class JavaFlowBuilder(ReactFlowBuilder):
     def build_for_body(self, name, body_text):
+        """Build flowchart for Java method"""
         self.nodes, self.edges, self._id_counter = [], [], 0
         start = self.add_node(f"Start: {name}", "terminator")
         last_node = start
@@ -226,6 +279,7 @@ class JavaFlowBuilder(ReactFlowBuilder):
         stmts = parse_java_structure(body_text)
         
         for stmt in stmts:
+            # FOR LOOP
             if stmt.startswith("for"):
                 header_match = re.search(r"for\s*\((.*?)\)", stmt)
                 header = header_match.group(0) if header_match else "For Loop"
@@ -237,15 +291,14 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
                 body_node = self.add_node(body_content, "process")
-                
-                # CHANGED: "True" -> "Loop" to trigger blue color
                 self.add_edge(loop_node, body_node, "Loop")
-                self.add_edge(body_node, loop_node) 
+                self.add_edge(body_node, loop_node)  # Loop back
                 
-                merge = self.add_node("", "process") 
+                merge = self.add_node("", "process")  # Merge point
                 self.add_edge(loop_node, merge, "Done")
                 last_node = merge
-                
+            
+            # WHILE LOOP
             elif stmt.startswith("while"):
                 header_match = re.search(r"while\s*\((.*?)\)", stmt)
                 header = header_match.group(0) if header_match else "While Loop"
@@ -257,15 +310,14 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
                 body_node = self.add_node(body_content, "process")
-                
-                # CHANGED: "True" -> "Loop" to trigger blue color
                 self.add_edge(loop_node, body_node, "Loop")
-                self.add_edge(body_node, loop_node)
+                self.add_edge(body_node, loop_node)  # Loop back
                 
-                merge = self.add_node("", "process")
+                merge = self.add_node("", "process")  # Merge point
                 self.add_edge(loop_node, merge, "Done")
                 last_node = merge
 
+            # IF STATEMENT
             elif stmt.startswith("if"):
                 header_match = re.search(r"if\s*\((.*?)\)", stmt)
                 header = header_match.group(0) if header_match else "If"
@@ -279,19 +331,22 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 true_node = self.add_node(body_content, "process")
                 self.add_edge(decision, true_node, "True")
                 
-                merge = self.add_node("", "process")
+                merge = self.add_node("", "process")  # Merge point
                 self.add_edge(true_node, merge)
                 self.add_edge(decision, merge, "False")
                 last_node = merge
 
+            # RETURN STATEMENT
             elif stmt.startswith("return"):
                 node = self.add_node(stmt, "terminator")
                 self.add_edge(last_node, node)
-                last_node = None
+                last_node = None  # Terminal
             
+            # REGULAR STATEMENT
             else:
                 node = self.add_node(stmt, "process")
-                if last_node: self.add_edge(last_node, node)
+                if last_node: 
+                    self.add_edge(last_node, node)
                 last_node = node
                 
         return self.get_data()
@@ -355,7 +410,12 @@ async def analyze_code(request: CodeRequest):
                 elif len(funcs) == 1:
                     result["graph_data"] = PythonFlowBuilder().build_for_function(funcs[0])
                 else:
-                    wrapper = ast.FunctionDef(name="Script", args=ast.arguments(args=[], defaults=[]), body=tree.body, decorator_list=[])
+                    wrapper = ast.FunctionDef(
+                        name="Script", 
+                        args=ast.arguments(args=[], defaults=[]), 
+                        body=tree.body, 
+                        decorator_list=[]
+                    )
                     result["graph_data"] = PythonFlowBuilder().build_for_function(wrapper)
 
         elif request.language == "java":

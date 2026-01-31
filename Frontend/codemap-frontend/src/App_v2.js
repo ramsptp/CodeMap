@@ -177,41 +177,102 @@ const LoopNode = ({ data }) => {
 };
 
 // ===========================================
-// 2. LAYOUT ENGINE
+// 2. LAYOUT ENGINE (IMPROVED HORIZONTAL BRANCHING)
 // ===========================================
 const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
 
 const getLayoutedElements = (nodes, edges) => {
-  dagreGraph.setGraph({ rankdir: 'TB', nodesep: 70, ranksep: 70 });
+  // Use LR (Left-Right) for more horizontal spread
+  dagreGraph.setGraph({ 
+    rankdir: 'TB',     // Top to Bottom main flow
+    nodesep: 120,      // Increased horizontal spacing between nodes
+    ranksep: 100,      // Increased vertical spacing between ranks
+    edgesep: 50,       // Space between edges
+    marginx: 50,
+    marginy: 50
+  });
 
   nodes.forEach((node) => {
     let width = 150;
     let height = 60;
-    if (node.type === "decision") { height = 80; width = 100; }
-    if (node.type === "loop") { height = 60; width = 160; }
-    if (node.type === "process" && node.data.label) { height = 50; width = 180; }
+    
+    if (node.type === "terminator") { 
+      width = 180; 
+      height = 50; 
+    }
+    if (node.type === "decision") { 
+      width = 120; 
+      height = 100; 
+    }
+    if (node.type === "loop") { 
+      width = 200; 
+      height = 70; 
+    }
+    if (node.type === "process") { 
+      if (!node.data.label) {
+        // Merge point - make it tiny
+        width = 10;
+        height = 10;
+      } else {
+        width = 200; 
+        height = 60; 
+      }
+    }
+    
     dagreGraph.setNode(node.id, { width, height });
   });
 
+  // Add edges with rank constraints for better branching
   edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
+    const edgeConfig = {};
+    
+    // Give False/Done branches more weight to push them horizontally
+    if (edge.label === "False" || edge.label === "Done") {
+      edgeConfig.weight = 2; // Higher weight = prefer this path
+    } else if (edge.label === "True" || edge.label === "Loop") {
+      edgeConfig.weight = 1;
+    }
+    
+    dagreGraph.setEdge(edge.source, edge.target, edgeConfig);
   });
 
   dagre.layout(dagreGraph);
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    let xOffset = 75;
-    if (node.type === 'decision') xOffset = 50;
-    if (node.type === 'loop') xOffset = 80;
-    if (node.type === 'process' && node.data.label) xOffset = 90;
+    
+    // Center the nodes based on their type
+    let xOffset = 100;
+    let yOffset = 30;
+    
+    if (node.type === 'terminator') {
+      xOffset = 90;
+      yOffset = 25;
+    }
+    if (node.type === 'decision') {
+      xOffset = 60;
+      yOffset = 50;
+    }
+    if (node.type === 'loop') {
+      xOffset = 100;
+      yOffset = 35;
+    }
+    if (node.type === 'process') {
+      if (!node.data.label) {
+        xOffset = 5;
+        yOffset = 5;
+      } else {
+        xOffset = 100;
+        yOffset = 30;
+      }
+    }
 
     return {
       ...node,
       position: {
         x: nodeWithPosition.x - xOffset,
-        y: nodeWithPosition.y - 25,
+        y: nodeWithPosition.y - yOffset,
       },
     };
   });
@@ -220,9 +281,9 @@ const getLayoutedElements = (nodes, edges) => {
 };
 
 // ===========================================
-// 3. GRAPH COMPONENT
+// 3. GRAPH COMPONENT (WITH LAYOUT MEMORY)
 // ===========================================
-const FlowGraph = ({ data, onNodeClick }) => {
+const FlowGraph = ({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -233,16 +294,44 @@ const FlowGraph = ({ data, onNodeClick }) => {
     loop: LoopNode 
   }), []);
 
-  useEffect(() => {
-    if (data && data.nodes) {
-      const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-        data.nodes,
-        data.edges
-      );
-      setNodes(layoutedNodes);
-      setEdges(layoutedEdges);
+  // Create a unique key based on node IDs to force re-layout when needed
+  const graphKey = useMemo(() => {
+    if (!data?.nodes || data.nodes.length === 0) return 'empty';
+    return data.nodes.map(n => n.id).join('-');
+  }, [data]);
+
+  // Calculate or retrieve layout
+  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(() => {
+    if (!data || !data.nodes || data.nodes.length === 0) {
+      return { nodes: [], edges: [] };
     }
-  }, [data, setNodes, setEdges]);
+
+    // Check if we have this layout in memory
+    if (memoryKey && graphMemory[memoryKey]) {
+      console.log(`📦 Loading layout from memory: ${memoryKey}`);
+      return graphMemory[memoryKey];
+    }
+
+    // Calculate new layout
+    console.log(`🔄 Calculating new layout: ${memoryKey || 'unnamed'}`);
+    const layout = getLayoutedElements(data.nodes, data.edges || []);
+    
+    // Save to memory if we have a key
+    if (memoryKey && setGraphMemory) {
+      setGraphMemory(prev => ({
+        ...prev,
+        [memoryKey]: layout
+      }));
+    }
+    
+    return layout;
+  }, [graphKey, memoryKey, graphMemory, data, setGraphMemory]);
+
+  // Update React Flow state when layout changes
+  useEffect(() => {
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  }, [layoutedNodes, layoutedEdges, setNodes, setEdges]);
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -254,6 +343,7 @@ const FlowGraph = ({ data, onNodeClick }) => {
         onNodeClick={onNodeClick}
         nodeTypes={nodeTypes} 
         fitView
+        fitViewOptions={{ padding: 0.2 }}
       >
         <Background color="#333" gap={16} />
         <Controls />
@@ -283,6 +373,10 @@ const NewApp = () => {
   // Backend State
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // 3. GRAPH LAYOUT MEMORY STATE
+  // Stores calculated layouts so switching between functions preserves positions
+  const [graphMemory, setGraphMemory] = useState({});
 
   // --- ACTIONS ---
 
@@ -328,9 +422,42 @@ const NewApp = () => {
       if (sidebarView === "explorer") {
           // Update File System
           setFiles(prev => ({ ...prev, [activeFileName]: newContent }));
+          // Clear graph memory for this file since code changed
+          setGraphMemory(prev => {
+              const updated = { ...prev };
+              Object.keys(updated).forEach(key => {
+                  if (key.startsWith(`${activeFileName}:`)) {
+                      delete updated[key];
+                  }
+              });
+              return updated;
+          });
       } else {
           // Update Snippet Memory (for the current language)
           setSnippetMemory(prev => ({ ...prev, [language]: newContent }));
+          // Clear graph memory for this snippet
+          setGraphMemory(prev => {
+              const updated = { ...prev };
+              Object.keys(updated).forEach(key => {
+                  if (key.startsWith(`snippet-${language}:`)) {
+                      delete updated[key];
+                  }
+              });
+              return updated;
+          });
+      }
+  };
+
+  // Generate memory key for current graph
+  const getMemoryKey = () => {
+      if (sidebarView === "explorer") {
+          return currentFunc 
+              ? `${activeFileName}:${currentFunc}` 
+              : `${activeFileName}:overview`;
+      } else {
+          return currentFunc
+              ? `snippet-${language}:${currentFunc}`
+              : `snippet-${language}:overview`;
       }
   };
 
@@ -551,7 +678,13 @@ const NewApp = () => {
                {loading ? (
                  <div style={centerMsgStyle}>Analyzing...</div>
                ) : analysisResult && analysisResult.graph_data ? (
-                 <FlowGraph data={analysisResult.graph_data} onNodeClick={onGraphNodeClick} />
+                 <FlowGraph 
+                   data={analysisResult.graph_data} 
+                   onNodeClick={onGraphNodeClick}
+                   graphMemory={graphMemory}
+                   setGraphMemory={setGraphMemory}
+                   memoryKey={getMemoryKey()}
+                 />
                ) : (
                  <div style={centerMsgStyle}>
                     <p>[ React Flow Engine ]</p>
