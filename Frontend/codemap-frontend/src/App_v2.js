@@ -10,12 +10,115 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
+import JSZip from 'jszip';
 import {
   Folder, Code, GitBranch, Play, Settings,
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
+
+// ===========================================
+// DEPENDENCY SCANNER
+// ===========================================
+
+// Scan Python imports
+const scanPythonImports = (content) => {
+  const imports = [];
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    // Match: from module import ...
+    const fromMatch = line.match(/^\s*from\s+([\w.]+)\s+import/);
+    if (fromMatch) {
+      imports.push(fromMatch[1].split('.')[0]); // Get base module
+    }
+
+    // Match: import module
+    const importMatch = line.match(/^\s*import\s+([\w.]+)/);
+    if (importMatch) {
+      imports.push(importMatch[1].split('.')[0]);
+    }
+  }
+
+  return [...new Set(imports)]; // Remove duplicates
+};
+
+// Scan Java imports
+const scanJavaImports = (content) => {
+  const imports = [];
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    const match = line.match(/^\s*import\s+([\w.]+);/);
+    if (match) {
+      // Get class name from package path
+      const parts = match[1].split('.');
+      imports.push(parts[parts.length - 1]);
+    }
+  }
+
+  return [...new Set(imports)];
+};
+
+// Scan file tree for dependencies
+const scanTreeDependencies = (tree, basePath = '') => {
+  const imports = new Map(); // filePath -> [imported modules]
+  const importedBy = new Map(); // filePath -> [files that import it]
+  const filesByName = new Map(); // filename (without ext) -> full path
+
+  // First pass: collect all file paths and names
+  const collectFiles = (node, path) => {
+    if (node.type === 'file') {
+      const nameWithoutExt = node.name.replace(/\.[^.]+$/, '');
+      filesByName.set(nameWithoutExt.toLowerCase(), path);
+    } else if (node.type === 'folder' && node.children) {
+      for (const [name, child] of Object.entries(node.children)) {
+        collectFiles(child, path ? `${path}/${name}` : name);
+      }
+    }
+  };
+  collectFiles(tree, '');
+
+  // Second pass: scan imports
+  const scanNode = (node, path) => {
+    if (node.type === 'file' && node.content) {
+      let fileImports = [];
+
+      if (node.name.endsWith('.py')) {
+        fileImports = scanPythonImports(node.content);
+      } else if (node.name.endsWith('.java')) {
+        fileImports = scanJavaImports(node.content);
+      }
+
+      // Resolve imports to actual files in the tree
+      const resolvedImports = [];
+      for (const imp of fileImports) {
+        const importPath = filesByName.get(imp.toLowerCase());
+        if (importPath && importPath !== path) {
+          resolvedImports.push(importPath);
+
+          // Update importedBy
+          if (!importedBy.has(importPath)) {
+            importedBy.set(importPath, []);
+          }
+          importedBy.get(importPath).push(path);
+        }
+      }
+
+      if (resolvedImports.length > 0) {
+        imports.set(path, resolvedImports);
+      }
+    } else if (node.type === 'folder' && node.children) {
+      for (const [name, child] of Object.entries(node.children)) {
+        scanNode(child, path ? `${path}/${name}` : name);
+      }
+    }
+  };
+  scanNode(tree, '');
+
+  return { imports, importedBy };
+};
 
 // ===========================================
 // 0. DATA & TEMPLATES
@@ -461,6 +564,12 @@ const NewApp = () => {
     return getFileName(selectedFilePath);
   }, [selectedFilePath]);
 
+  // Auto-scan dependencies when file tree changes
+  useEffect(() => {
+    const deps = scanTreeDependencies(fileTree);
+    setDependencies(deps);
+  }, [fileTree]);
+
   // --- ACTIONS ---
 
   // Handle file selection from FileExplorer
@@ -527,9 +636,105 @@ const NewApp = () => {
     });
   }, []);
 
-  // Handle ZIP upload (placeholder - needs jszip)
-  const handleUploadZip = useCallback((file) => {
-    alert('ZIP upload coming soon! Install jszip: npm install jszip');
+  // Handle ZIP upload with extraction
+  const handleUploadZip = useCallback(async (file) => {
+    try {
+      const zip = new JSZip();
+      const contents = await zip.loadAsync(file);
+
+      const zipName = file.name.replace('.zip', '');
+
+      // First, collect all files with their content
+      const fileData = [];
+      const filePromises = [];
+
+      // First, log what's in the ZIP
+      const allPaths = [];
+      contents.forEach((relativePath, zipEntry) => {
+        allPaths.push({ path: relativePath, isDir: zipEntry.dir });
+      });
+      console.log('All ZIP entries:', allPaths);
+
+      contents.forEach((relativePath, zipEntry) => {
+        if (!zipEntry.dir) {
+          // Skip hidden files
+          const isHidden = relativePath.split('/').some(part => part.startsWith('.'));
+
+          // Skip common binary extensions
+          const ext = relativePath.split('.').pop()?.toLowerCase();
+          const binaryExts = ['zip', 'exe', 'dll', 'so', 'dylib', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'mp3', 'mp4', 'avi', 'mov', 'wav', 'ttf', 'woff', 'woff2', 'eot', 'class', 'jar', 'pyc', 'pyo'];
+          const isBinary = binaryExts.includes(ext);
+
+          if (!isHidden && !isBinary) {
+            filePromises.push(
+              zipEntry.async('string').then(content => {
+                fileData.push({ path: relativePath, content });
+              }).catch(err => {
+                console.warn('Failed to read file as text:', relativePath, err);
+              })
+            );
+          }
+        }
+      });
+
+      // Wait for all files to be read
+      await Promise.all(filePromises);
+
+      console.log('ZIP files extracted:', fileData.length, fileData.map(f => f.path));
+
+      // Now build the tree synchronously
+      setFileTree(prevTree => {
+        const newTree = JSON.parse(JSON.stringify(prevTree));
+
+        // Create root folder for zip contents
+        newTree.children[zipName] = {
+          type: 'folder',
+          name: zipName,
+          children: {}
+        };
+
+        // Add all files to the tree
+        for (const { path, content } of fileData) {
+          const pathParts = path.split('/').filter(p => p); // Filter empty parts
+          let current = newTree.children[zipName];
+
+          // Create folder structure
+          for (let i = 0; i < pathParts.length - 1; i++) {
+            const part = pathParts[i];
+            if (!current.children) {
+              current.children = {};
+            }
+            if (!current.children[part]) {
+              current.children[part] = {
+                type: 'folder',
+                name: part,
+                children: {}
+              };
+            }
+            current = current.children[part];
+          }
+
+          // Add file
+          const fileName = pathParts[pathParts.length - 1];
+          if (fileName) {
+            if (!current.children) {
+              current.children = {};
+            }
+            current.children[fileName] = {
+              type: 'file',
+              name: fileName,
+              content: content
+            };
+          }
+        }
+
+        return newTree;
+      });
+
+    } catch (error) {
+      console.error('ZIP extraction failed:', error);
+      alert('Failed to extract ZIP file. Make sure it\'s a valid ZIP.');
+    }
   }, []);
 
   // --- EDITOR CHANGE HANDLER ---
