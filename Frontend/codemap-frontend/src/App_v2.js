@@ -61,6 +61,48 @@ const scanJavaImports = (content) => {
   return [...new Set(imports)];
 };
 
+// Scan JavaScript/TypeScript imports
+const scanJsImports = (content) => {
+  const imports = [];
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    // Match: import ... from 'module'
+    const esImport = line.match(/^\s*import\s+.*?\s+from\s+['"]([^'"]+)['"]/);
+    if (esImport) {
+      const mod = esImport[1].replace(/^\.\//, '').replace(/\.\w+$/, '');
+      const parts = mod.split('/');
+      imports.push(parts[parts.length - 1]);
+    }
+
+    // Match: const x = require('module')
+    const requireMatch = line.match(/require\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (requireMatch) {
+      const mod = requireMatch[1].replace(/^\.\//, '').replace(/\.\w+$/, '');
+      const parts = mod.split('/');
+      imports.push(parts[parts.length - 1]);
+    }
+
+    // Match: import('module') dynamic
+    const dynamicImport = line.match(/import\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (dynamicImport) {
+      const mod = dynamicImport[1].replace(/^\.\//, '').replace(/\.\w+$/, '');
+      const parts = mod.split('/');
+      imports.push(parts[parts.length - 1]);
+    }
+
+    // Match: export ... from 'module'
+    const reExport = line.match(/^\s*export\s+.*?\s+from\s+['"]([^'"]+)['"]/);
+    if (reExport) {
+      const mod = reExport[1].replace(/^\.\//, '').replace(/\.\w+$/, '');
+      const parts = mod.split('/');
+      imports.push(parts[parts.length - 1]);
+    }
+  }
+
+  return [...new Set(imports)];
+};
+
 // Scan file tree for dependencies
 const scanTreeDependencies = (tree, basePath = '') => {
   const imports = new Map(); // filePath -> [imported modules]
@@ -89,6 +131,8 @@ const scanTreeDependencies = (tree, basePath = '') => {
         fileImports = scanPythonImports(node.content);
       } else if (node.name.endsWith('.java')) {
         fileImports = scanJavaImports(node.content);
+      } else if (/\.(js|jsx|ts|tsx)$/.test(node.name)) {
+        fileImports = scanJsImports(node.content);
       }
 
       // Resolve imports to actual files in the tree

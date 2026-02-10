@@ -61,10 +61,17 @@ const TreeNode = ({
     const isExpanded = expandedFolders.has(fullPath);
     const isSelected = selectedFile === fullPath;
     const [dragOver, setDragOver] = useState(false);
+    const [showDepPopup, setShowDepPopup] = useState(null); // 'imports' | 'importedBy' | null
 
     // Dependency indicators
     const fileDeps = dependencies?.imports?.get(fullPath) || [];
     const importedBy = dependencies?.importedBy?.get(fullPath) || [];
+
+    // Determine highlighting based on selected file
+    const selectedFileImports = dependencies?.imports?.get(selectedFile) || [];
+    const selectedFileImportedBy = dependencies?.importedBy?.get(selectedFile) || [];
+    const isImportedBySelected = selectedFileImports.includes(fullPath);
+    const isImporterOfSelected = selectedFileImportedBy.includes(fullPath);
 
     const handleClick = (e) => {
         e.stopPropagation();
@@ -92,7 +99,6 @@ const TreeNode = ({
         e.preventDefault();
         e.stopPropagation();
 
-        // Only allow dropping on folders
         if (isFolder) {
             e.dataTransfer.dropEffect = 'move';
             setDragOver(true);
@@ -115,16 +121,36 @@ const TreeNode = ({
         const sourcePath = e.dataTransfer.getData('text/plain');
         if (!sourcePath || sourcePath === fullPath) return;
 
-        // Don't allow dropping a folder into itself or its children
         if (fullPath.startsWith(sourcePath + '/')) return;
 
         onMoveItem(sourcePath, fullPath);
     };
 
+    // Badge click handler
+    const handleBadgeClick = (e, type) => {
+        e.stopPropagation();
+        setShowDepPopup(prev => prev === type ? null : type);
+    };
+
+    // Navigate to file from popup
+    const handleDepFileClick = (e, filePath) => {
+        e.stopPropagation();
+        setShowDepPopup(null);
+        // Find the file node content by navigating the tree
+        onFileSelect(filePath, null); // null content will trigger re-read from tree
+    };
+
+    // Build highlight class
+    let highlightClass = '';
+    if (!isFolder && !isSelected) {
+        if (isImportedBySelected) highlightClass = 'dep-highlight-import';
+        if (isImporterOfSelected) highlightClass = 'dep-highlight-importer';
+    }
+
     return (
         <div className="tree-node">
             <div
-                className={`tree-item ${isSelected ? 'selected' : ''} ${isFolder ? 'folder' : 'file'} ${dragOver ? 'drag-over' : ''}`}
+                className={`tree-item ${isSelected ? 'selected' : ''} ${isFolder ? 'folder' : 'file'} ${dragOver ? 'drag-over' : ''} ${highlightClass}`}
                 style={{ paddingLeft: `${depth * 16 + 8}px` }}
                 onClick={handleClick}
                 onContextMenu={handleContextMenu}
@@ -160,22 +186,53 @@ const TreeNode = ({
                 {/* Name */}
                 <span className="tree-name">{node.name}</span>
 
-                {/* Dependency indicators for files */}
+                {/* Dependency badges - now clickable */}
                 {!isFolder && (fileDeps.length > 0 || importedBy.length > 0) && (
                     <span className="dependency-indicators">
                         {fileDeps.length > 0 && (
-                            <span className="dep-badge imports" title={`Imports: ${fileDeps.join(', ')}`}>
+                            <span
+                                className={`dep-badge imports clickable ${showDepPopup === 'imports' ? 'active' : ''}`}
+                                onClick={(e) => handleBadgeClick(e, 'imports')}
+                                title="Click to see imports"
+                            >
                                 →{fileDeps.length}
                             </span>
                         )}
                         {importedBy.length > 0 && (
-                            <span className="dep-badge imported-by" title={`Imported by: ${importedBy.join(', ')}`}>
+                            <span
+                                className={`dep-badge imported-by clickable ${showDepPopup === 'importedBy' ? 'active' : ''}`}
+                                onClick={(e) => handleBadgeClick(e, 'importedBy')}
+                                title="Click to see importers"
+                            >
                                 ←{importedBy.length}
                             </span>
                         )}
                     </span>
                 )}
             </div>
+
+            {/* Dependency popup */}
+            {showDepPopup && (
+                <div className="dep-popup" style={{ marginLeft: `${depth * 16 + 32}px` }}>
+                    <div className="dep-popup-header">
+                        {showDepPopup === 'imports' ? '📤 Imports' : '📥 Imported By'}
+                        <span className="dep-popup-close" onClick={(e) => { e.stopPropagation(); setShowDepPopup(null); }}>
+                            <X size={12} />
+                        </span>
+                    </div>
+                    {(showDepPopup === 'imports' ? fileDeps : importedBy).map(dep => (
+                        <div
+                            key={dep}
+                            className="dep-popup-item"
+                            onClick={(e) => handleDepFileClick(e, dep)}
+                        >
+                            <FileText size={12} />
+                            <span>{dep.split('/').pop()}</span>
+                            <span className="dep-popup-path">{dep}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Render children if folder is expanded */}
             {isFolder && isExpanded && node.children && (

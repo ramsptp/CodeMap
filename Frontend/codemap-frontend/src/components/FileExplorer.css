@@ -218,6 +218,21 @@
   border-radius: 3px;
   font-weight: bold;
   cursor: help;
+  transition: all 0.2s ease;
+}
+
+.dep-badge.clickable {
+  cursor: pointer;
+}
+
+.dep-badge.clickable:hover {
+  transform: scale(1.15);
+  filter: brightness(1.3);
+}
+
+.dep-badge.active {
+  transform: scale(1.15);
+  box-shadow: 0 0 6px currentColor;
 }
 
 .dep-badge.imports {
@@ -230,6 +245,103 @@
   background: rgba(76, 175, 80, 0.2);
   color: #4caf50;
   border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+/* Dependency Popup */
+.dep-popup {
+  background: #2d2d30;
+  border: 1px solid #3e3e42;
+  border-radius: 6px;
+  margin: 2px 8px 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  animation: popupSlide 0.15s ease-out;
+}
+
+@keyframes popupSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dep-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: #aaa;
+  background: #252526;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.dep-popup-close {
+  cursor: pointer;
+  color: #888;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.dep-popup-close:hover {
+  background: #3e3e42;
+  color: #fff;
+}
+
+.dep-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: background 0.1s ease;
+}
+
+.dep-popup-item:hover {
+  background: #094771;
+}
+
+.dep-popup-item:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+.dep-popup-path {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: #666;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dependency Highlighting */
+.tree-item.dep-highlight-import {
+  background: rgba(0, 123, 255, 0.1) !important;
+  border-left: 2px solid #4da3ff;
+}
+
+.tree-item.dep-highlight-import .tree-name {
+  color: #4da3ff;
+}
+
+.tree-item.dep-highlight-importer {
+  background: rgba(76, 175, 80, 0.1) !important;
+  border-left: 2px solid #4caf50;
+}
+
+.tree-item.dep-highlight-importer .tree-name {
+  color: #4caf50;
 }
 
 /* Context Menu */
