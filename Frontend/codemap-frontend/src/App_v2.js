@@ -572,6 +572,219 @@ const FlowGraph = ({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }
 };
 
 // ===========================================
+// 3b. FILE DEPENDENCY GRAPH COMPONENT
+// ===========================================
+
+// Language color palette
+const LANG_COLORS = {
+  py: { bg: '#2b5b84', border: '#3572A5', text: '#fff', label: 'Python' },
+  java: { bg: '#6d4c0a', border: '#b07219', text: '#fff', label: 'Java' },
+  js: { bg: '#6b5e00', border: '#f1e05a', text: '#fff', label: 'JS' },
+  jsx: { bg: '#6b5e00', border: '#f1e05a', text: '#fff', label: 'JSX' },
+  ts: { bg: '#1a4b6e', border: '#3178c6', text: '#fff', label: 'TS' },
+  tsx: { bg: '#1a4b6e', border: '#3178c6', text: '#fff', label: 'TSX' },
+  json: { bg: '#4a3800', border: '#cb8c00', text: '#fff', label: 'JSON' },
+  css: { bg: '#1a3a5c', border: '#563d7c', text: '#fff', label: 'CSS' },
+  html: { bg: '#6c2e00', border: '#e34c26', text: '#fff', label: 'HTML' },
+  md: { bg: '#333', border: '#888', text: '#fff', label: 'Markdown' },
+  default: { bg: '#333', border: '#666', text: '#ccc', label: 'File' }
+};
+
+const getFileColor = (filename) => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  return LANG_COLORS[ext] || LANG_COLORS.default;
+};
+
+// Custom node for file dependency graph
+const FileDepNode = ({ data }) => {
+  const colors = data.colors;
+  const isSelected = data.isSelected;
+
+  return (
+    <div style={{
+      background: isSelected ? '#094771' : colors.bg,
+      border: `2px solid ${isSelected ? '#4caf50' : colors.border}`,
+      borderRadius: '8px',
+      padding: '10px 16px',
+      minWidth: '140px',
+      textAlign: 'center',
+      boxShadow: isSelected
+        ? '0 0 12px rgba(76, 175, 80, 0.5)'
+        : '0 2px 8px rgba(0, 0, 0, 0.3)',
+      transition: 'all 0.2s ease',
+      cursor: 'pointer',
+    }}>
+      <Handle type="target" position={Position.Top} style={{ background: colors.border, width: 8, height: 8 }} />
+      <div style={{
+        fontSize: '0.55rem',
+        color: colors.border,
+        textTransform: 'uppercase',
+        fontWeight: 'bold',
+        marginBottom: '3px',
+        letterSpacing: '0.5px',
+        opacity: 0.9,
+      }}>
+        {colors.label}
+      </div>
+      <div style={{
+        color: colors.text,
+        fontSize: '0.8rem',
+        fontWeight: isSelected ? 'bold' : 'normal',
+        wordBreak: 'break-word',
+      }}>
+        {data.label}
+      </div>
+      {data.folder && (
+        <div style={{
+          color: 'rgba(255,255,255,0.4)',
+          fontSize: '0.6rem',
+          marginTop: '2px',
+        }}>
+          {data.folder}
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} style={{ background: colors.border, width: 8, height: 8 }} />
+    </div>
+  );
+};
+
+const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const nodeTypes = useMemo(() => ({
+    fileNode: FileDepNode
+  }), []);
+
+  // Build nodes and edges from dependency data
+  useEffect(() => {
+    if (!dependencies) return;
+
+    // Collect all files that have dependencies
+    const allFiles = new Set();
+    dependencies.imports?.forEach((deps, file) => {
+      allFiles.add(file);
+      deps.forEach(d => allFiles.add(d));
+    });
+    dependencies.importedBy?.forEach((importers, file) => {
+      allFiles.add(file);
+      importers.forEach(i => allFiles.add(i));
+    });
+
+    if (allFiles.size === 0) return;
+
+    // Create nodes
+    const newNodes = Array.from(allFiles).map(filePath => {
+      const fileName = filePath.split('/').pop();
+      const folderPath = filePath.split('/').slice(0, -1).join('/');
+      const colors = getFileColor(fileName);
+
+      return {
+        id: filePath,
+        type: 'fileNode',
+        data: {
+          label: fileName,
+          folder: folderPath || null,
+          colors,
+          isSelected: filePath === selectedFile,
+        },
+        position: { x: 0, y: 0 }, // dagre will set this
+      };
+    });
+
+    // Create edges
+    const newEdges = [];
+    dependencies.imports?.forEach((deps, sourceFile) => {
+      deps.forEach(targetFile => {
+        newEdges.push({
+          id: `${sourceFile}->${targetFile}`,
+          source: sourceFile,
+          target: targetFile,
+          animated: true,
+          style: { stroke: '#4da3ff', strokeWidth: 2 },
+          markerEnd: { type: 'arrowclosed', color: '#4da3ff' },
+          label: 'imports',
+          labelStyle: { fill: '#888', fontSize: '0.6rem' },
+          labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
+        });
+      });
+    });
+
+    // Layout with dagre
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({
+      rankdir: 'TB',
+      nodesep: 80,
+      ranksep: 100,
+      edgesep: 30,
+      marginx: 40,
+      marginy: 40,
+    });
+
+    newNodes.forEach(node => {
+      g.setNode(node.id, { width: 160, height: 70 });
+    });
+
+    newEdges.forEach(edge => {
+      g.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(g);
+
+    const layoutedNodes = newNodes.map(node => {
+      const pos = g.node(node.id);
+      return {
+        ...node,
+        position: { x: pos.x - 80, y: pos.y - 35 },
+      };
+    });
+
+    setNodes(layoutedNodes);
+    setEdges(newEdges);
+  }, [dependencies, selectedFile, fileTree, setNodes, setEdges]);
+
+  const handleNodeClick = useCallback((event, node) => {
+    if (onFileSelect) {
+      onFileSelect(node.id, null);
+    }
+  }, [onFileSelect]);
+
+  const hasData = nodes.length > 0;
+
+  return (
+    <div style={{ width: '100%', height: '100%' }}>
+      {hasData ? (
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+        >
+          <Background color="#333" gap={16} />
+          <Controls />
+        </ReactFlow>
+      ) : (
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: '#555', textAlign: 'center',
+        }}>
+          <p style={{ fontSize: '1.2rem' }}>📊 File Dependency Map</p>
+          <p style={{ fontSize: '0.8rem' }}>
+            Upload files with imports to see relationships
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===========================================
 // 4. MAIN APP
 // ===========================================
 const NewApp = () => {
@@ -1010,6 +1223,12 @@ const NewApp = () => {
               <button onClick={() => setViewMode("code")} title="Code Only" style={{ ...iconBtnStyle, background: viewMode === "code" ? "#3e3e42" : "transparent" }}> <FileText size={14} /> </button>
               <button onClick={() => setViewMode("split")} title="Split View" style={{ ...iconBtnStyle, background: viewMode === "split" ? "#3e3e42" : "transparent" }}> <Columns size={14} /> </button>
               <button onClick={() => setViewMode("graph")} title="Graph Only" style={{ ...iconBtnStyle, background: viewMode === "graph" ? "#3e3e42" : "transparent" }}> <Layers size={14} /> </button>
+              {sidebarView === "explorer" && (
+                <>
+                  <div style={{ width: 1, height: 20, background: "#444", alignSelf: "center" }} />
+                  <button onClick={() => setViewMode("fileMap")} title="File Dependency Map" style={{ ...iconBtnStyle, background: viewMode === "fileMap" ? "#3e3e42" : "transparent", color: viewMode === "fileMap" ? "#4caf50" : "#ccc" }}> <GitBranch size={14} /> </button>
+                </>
+              )}
             </div>
 
             <button style={runBtnStyle} onClick={() => handleAnalyze(null)}>
@@ -1051,6 +1270,18 @@ const NewApp = () => {
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* FILE DEPENDENCY MAP - Explorer only */}
+          {viewMode === "fileMap" && sidebarView === "explorer" && (
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+              <FileDepGraph
+                dependencies={dependencies}
+                fileTree={fileTree}
+                selectedFile={selectedFilePath}
+                onFileSelect={handleFileSelect}
+              />
             </div>
           )}
         </div>
