@@ -1270,14 +1270,21 @@ const NewApp = () => {
     setLoading(true);
 
     // 1. Determine Language Logic
-    let langToSend = "python";
     let codeToSend = "";
+    let langToSend = "python";
 
     if (sidebarView === "explorer") {
-      // Auto-detect from file extension
-      if (activeFileName.endsWith(".java")) langToSend = "java";
-      else langToSend = "python";
+      if (!currentFileContent) return;
       codeToSend = currentFileContent;
+
+      // Auto-detect language from extension
+      if (activeFileName.endsWith(".py")) langToSend = "python";
+      else if (activeFileName.endsWith(".java")) langToSend = "java";
+      else if (activeFileName.endsWith(".js") || activeFileName.endsWith(".jsx")) langToSend = "javascript";
+      else if (activeFileName.endsWith(".ts") || activeFileName.endsWith(".tsx")) langToSend = "typescript";
+      else if (activeFileName.endsWith(".cpp") || activeFileName.endsWith(".cc")) langToSend = "cpp";
+      else if (activeFileName.endsWith(".c")) langToSend = "c";
+
     } else {
       // Use explicit dropdown choice in Snippets mode
       langToSend = language;
