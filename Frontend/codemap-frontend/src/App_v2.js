@@ -599,51 +599,113 @@ const getFileColor = (filename) => {
 const FileDepNode = ({ data }) => {
   const colors = data.colors;
   const isSelected = data.isSelected;
+  const isDimmed = data.isDimmed;
+  const stats = data.stats || { imports: 0, importedBy: 0 };
+  const [showTooltip, setShowTooltip] = useState(false);
 
   return (
     <div style={{
-      background: isSelected ? '#094771' : colors.bg,
-      border: `2px solid ${isSelected ? '#4caf50' : colors.border}`,
-      borderRadius: '8px',
-      padding: '10px 16px',
-      minWidth: '140px',
+      background: isSelected
+        ? `linear-gradient(135deg, ${colors.bg}cc, ${colors.bg}99)`
+        : `linear-gradient(135deg, ${colors.bg}bb, ${colors.bg}66)`,
+      border: `1px solid ${isSelected ? '#4caf50' : colors.border}80`,
+      backdropFilter: 'blur(6px)',
+      borderRadius: '12px',
+      padding: '12px 16px',
+      minWidth: '150px',
       textAlign: 'center',
       boxShadow: isSelected
-        ? '0 0 12px rgba(76, 175, 80, 0.5)'
-        : '0 2px 8px rgba(0, 0, 0, 0.3)',
-      transition: 'all 0.2s ease',
+        ? `0 0 20px ${colors.border}66, inset 0 0 10px ${colors.border}33`
+        : `0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)`,
+      transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
       cursor: 'pointer',
-    }}>
-      <Handle type="target" position={Position.Top} style={{ background: colors.border, width: 8, height: 8 }} />
+      opacity: isDimmed ? 0.2 : 1,
+      transform: isDimmed ? 'scale(0.95)' : 'scale(1)',
+      position: 'relative',
+      zIndex: isSelected || showTooltip ? 10 : 1,
+    }}
+      className="file-dep-node"
+      onMouseEnter={(e) => {
+        setShowTooltip(true);
+        e.currentTarget.style.transform = isDimmed ? 'scale(0.95)' : 'scale(1.05)';
+        e.currentTarget.style.zIndex = 100;
+      }}
+      onMouseLeave={(e) => {
+        setShowTooltip(false);
+        e.currentTarget.style.transform = isDimmed ? 'scale(0.95)' : 'scale(1)';
+        e.currentTarget.style.zIndex = isSelected ? 10 : 1;
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={{ background: colors.border, width: 8, height: 8, opacity: isDimmed ? 0.2 : 1 }} />
+
       <div style={{
-        fontSize: '0.55rem',
+        fontSize: '0.6rem',
         color: colors.border,
         textTransform: 'uppercase',
         fontWeight: 'bold',
-        marginBottom: '3px',
-        letterSpacing: '0.5px',
-        opacity: 0.9,
+        marginBottom: '4px',
+        letterSpacing: '1px',
+        textShadow: '0 1px 2px rgba(0,0,0,0.5)',
       }}>
         {colors.label}
       </div>
+
       <div style={{
-        color: colors.text,
-        fontSize: '0.8rem',
-        fontWeight: isSelected ? 'bold' : 'normal',
+        color: '#fff',
+        fontSize: '0.9rem',
+        fontWeight: isSelected ? '700' : '500',
         wordBreak: 'break-word',
+        textShadow: '0 2px 4px rgba(0,0,0,0.5)',
       }}>
         {data.label}
       </div>
+
       {data.folder && (
         <div style={{
-          color: 'rgba(255,255,255,0.4)',
-          fontSize: '0.6rem',
-          marginTop: '2px',
+          color: 'rgba(255,255,255,0.5)',
+          fontSize: '0.65rem',
+          marginTop: '4px',
+          fontStyle: 'italic',
         }}>
           {data.folder}
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} style={{ background: colors.border, width: 8, height: 8 }} />
+
+      {/* Tooltip */}
+      {showTooltip && !isDimmed && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: '50%',
+          transform: 'translate(-50%, -8px)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#eee',
+          padding: '6px 10px',
+          borderRadius: '6px',
+          fontSize: '0.7rem',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          zIndex: 1000,
+          display: 'flex',
+          gap: '10px'
+        }}>
+          <span>📤 Imports: {stats.imports}</span>
+          <span style={{ borderLeft: '1px solid #555', paddingLeft: '10px' }}>📥 Used by: {stats.importedBy}</span>
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '6px solid rgba(0,0,0,0.85)',
+          }} />
+        </div>
+      )}
+
+      <Handle type="source" position={Position.Bottom} style={{ background: colors.border, width: 8, height: 8, opacity: isDimmed ? 0.2 : 1 }} />
     </div>
   );
 };
@@ -651,26 +713,81 @@ const FileDepNode = ({ data }) => {
 const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [hoveredNode, setHoveredNode] = useState(null);
 
   const nodeTypes = useMemo(() => ({
     fileNode: FileDepNode
   }), []);
 
-  // Generate a key for the current graph structure to manage memory
+  // Generate a key for current graph structure
   const graphKey = useMemo(() => {
     if (!dependencies?.imports && !dependencies?.importedBy) return 'empty';
-    // Create a simple hash based on file names involved
     const files = new Set();
     dependencies.imports?.forEach((_, k) => files.add(k));
     dependencies.importedBy?.forEach((_, k) => files.add(k));
     return `file-dep-${Array.from(files).sort().join('|')}`;
   }, [dependencies]);
 
-  // 1. Structure & Layout Effect (Runs only when dependencies change)
+  // Helper function to update graph styles (dimming/highlighting)
+  const updateGraphStyles = useCallback((targetNodeId, currentNodes, currentEdges) => {
+    if (!targetNodeId) {
+      // Reset all to normal
+      setNodes(nds => nds.map(n => ({
+        ...n, data: { ...n.data, isDimmed: false, isSelected: n.id === selectedFile }
+      })));
+      setEdges(eds => eds.map(e => ({
+        ...e,
+        animated: false,
+        style: { ...e.style, opacity: 0.6, strokeWidth: 1.5, stroke: '#4da3ff' },
+        zIndex: 0
+      })));
+      return;
+    }
+
+    const connectedNodeIds = new Set([targetNodeId]);
+    const connectedEdgeIds = new Set();
+
+    currentEdges.forEach(edge => {
+      if (edge.source === targetNodeId) {
+        connectedNodeIds.add(edge.target);
+        connectedEdgeIds.add(edge.id);
+      }
+      if (edge.target === targetNodeId) {
+        connectedNodeIds.add(edge.source);
+        connectedEdgeIds.add(edge.id);
+      }
+    });
+
+    setEdges(currentEdges.map(edge => {
+      const isConnected = connectedEdgeIds.has(edge.id);
+      return {
+        ...edge,
+        animated: isConnected,
+        style: {
+          ...edge.style,
+          opacity: isConnected ? 1 : 0.1,
+          strokeWidth: isConnected ? 2.5 : 1.5,
+          stroke: isConnected ? '#4caf50' : '#4da3ff'
+        },
+        zIndex: isConnected ? 10 : 0
+      };
+    }));
+
+    setNodes(currentNodes.map(n => ({
+      ...n,
+      data: {
+        ...n.data,
+        isDimmed: !connectedNodeIds.has(n.id),
+        isSelected: n.id === selectedFile // Keep selection state
+      }
+    })));
+  }, [selectedFile, setNodes, setEdges]);
+
+
+  // 1. Structure & Layout Effect
   useEffect(() => {
     if (!dependencies) return;
 
-    // Collect all files that have dependencies
     const allFiles = new Set();
     dependencies.imports?.forEach((deps, file) => {
       allFiles.add(file);
@@ -681,7 +798,11 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
       importers.forEach(i => allFiles.add(i));
     });
 
-    if (allFiles.size === 0) return;
+    if (allFiles.size === 0) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
 
     // Check memory first
     if (graphMemory && graphMemory[graphKey]) {
@@ -689,7 +810,16 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
       const savedData = graphMemory[graphKey];
       setNodes(savedData.nodes.map(n => ({
         ...n,
-        data: { ...n.data, isSelected: n.id === selectedFile }
+        data: {
+          ...n.data,
+          isSelected: n.id === selectedFile,
+          isDimmed: false,
+          // stats might be missing in old memory, update them
+          stats: {
+            imports: dependencies.imports?.get(n.id)?.length || 0,
+            importedBy: dependencies.importedBy?.get(n.id)?.length || 0
+          }
+        }
       })));
       setEdges(savedData.edges);
       return;
@@ -702,6 +832,8 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
       const fileName = filePath.split('/').pop();
       const folderPath = filePath.split('/').slice(0, -1).join('/');
       const colors = getFileColor(fileName);
+      const importsCount = dependencies.imports?.get(filePath)?.length || 0;
+      const importedByCount = dependencies.importedBy?.get(filePath)?.length || 0;
 
       return {
         id: filePath,
@@ -711,6 +843,8 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
           folder: folderPath || null,
           colors,
           isSelected: filePath === selectedFile,
+          isDimmed: false,
+          stats: { imports: importsCount, importedBy: importedByCount }
         },
         position: { x: 0, y: 0 },
       };
@@ -725,7 +859,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
           source: sourceFile,
           target: targetFile,
           animated: true,
-          style: { stroke: '#4da3ff', strokeWidth: 2 },
+          style: { stroke: '#4da3ff', strokeWidth: 1.5, opacity: 0.6 },
           markerEnd: { type: 'arrowclosed', color: '#4da3ff' },
           label: 'imports',
           labelStyle: { fill: '#888', fontSize: '0.6rem' },
@@ -747,7 +881,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
     });
 
     newNodes.forEach(node => {
-      g.setNode(node.id, { width: 160, height: 70 });
+      g.setNode(node.id, { width: 170, height: 80 });
     });
 
     newEdges.forEach(edge => {
@@ -760,41 +894,37 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
       const pos = g.node(node.id);
       return {
         ...node,
-        position: { x: pos.x - 80, y: pos.y - 35 },
+        position: { x: pos.x - 85, y: pos.y - 40 },
       };
     });
 
     setNodes(layoutedNodes);
     setEdges(newEdges);
 
-    // Save initial layout to memory
     if (setGraphMemory) {
       setGraphMemory(prev => ({
         ...prev,
         [graphKey]: { nodes: layoutedNodes, edges: newEdges }
       }));
     }
-  }, [graphKey, dependencies, setGraphMemory, graphMemory]); // Intentionally exclude selectedFile
+  }, [graphKey, dependencies, setGraphMemory, graphMemory, selectedFile]); // selectedFile added for memory load selection
 
-  // 2. Selection Effect (Runs when selectedFile changes)
+  // 2. Selection & Sticky Focus Logic
   useEffect(() => {
-    setNodes(nds => nds.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        isSelected: node.id === selectedFile
-      }
-    })));
-  }, [selectedFile, setNodes]);
+    // Apply focus/dimming based on selectedFile
+    // This effect runs when nodes/edges are initialized or selectedFile changes.
+    // We need to ensure nodes and edges are available.
+    if (nodes.length > 0 && edges.length > 0) {
+      updateGraphStyles(selectedFile, nodes, edges);
+    } else if (!selectedFile) {
+      // If no selected file and no nodes/edges, ensure reset
+      setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, isDimmed: false, isSelected: false } })));
+      setEdges(eds => eds.map(e => ({ ...e, animated: false, style: { ...e.style, opacity: 0.6, strokeWidth: 1.5, stroke: '#4da3ff' }, zIndex: 0 })));
+    }
+  }, [selectedFile, nodes.length, edges.length, updateGraphStyles]); // Depend on nodes/edges length to trigger after layout
 
   // 3. Drag Persistence
   const onNodeDragStop = useCallback((event, node) => {
-    // Determine current nodes (React Flow state)
-    // We need to access the LATEST nodes state to save it. 
-    // Since we can't access state directly inside this callback without dependency,
-    // we rely on the node passed, but we need ALL nodes.
-    // Actually, setGraphMemory callback works best here.
-
     setNodes(nds => {
       // Save the *updated* nodes to memory
       if (setGraphMemory) {
@@ -813,6 +943,23 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
     }
   }, [onFileSelect]);
 
+  const onPaneClick = useCallback(() => {
+    // Clear selection on background click
+    if (onFileSelect) onFileSelect(null, null); // Clear selection
+  }, [onFileSelect]);
+
+  // Handle Hover - Highlight connections and dim others
+  const handleNodeMouseEnter = useCallback((event, node) => {
+    setHoveredNode(node.id);
+    updateGraphStyles(node.id, nodes, edges);
+  }, [nodes, edges, updateGraphStyles]);
+
+  const handleNodeMouseLeave = useCallback((event, node) => {
+    setHoveredNode(null);
+    // Revert to selectedFile focus, or clear all if no selectedFile
+    updateGraphStyles(selectedFile, nodes, edges);
+  }, [selectedFile, nodes, edges, updateGraphStyles]);
+
   const hasData = nodes.length > 0;
 
   return (
@@ -824,12 +971,15 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onPaneClick={onPaneClick}
           onNodeDragStop={onNodeDragStop}
+          onNodeMouseEnter={handleNodeMouseEnter}
+          onNodeMouseLeave={handleNodeMouseLeave}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.3 }}
         >
-          <Background color="#333" gap={16} />
+          <Background color="#1e1e1e" gap={20} size={1} />
           <Controls />
         </ReactFlow>
       ) : (
