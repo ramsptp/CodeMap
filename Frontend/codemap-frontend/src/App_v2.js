@@ -229,6 +229,127 @@ def format_output(text):
         }
       }
     },
+    'samples': {
+      type: 'folder',
+      name: 'samples',
+      children: {
+        'sample.cpp': {
+          type: 'file',
+          name: 'sample.cpp',
+          content: `#include <iostream>
+
+void checkVoting(int age) {
+    if (age >= 18) {
+        std::cout << "Eligible to vote" << std::endl;
+    } else {
+        std::cout << "Too young" << std::endl;
+    }
+}
+
+int main() {
+    int myAge = 20;
+    checkVoting(myAge);
+    return 0;
+}`
+        },
+        'sample.c': {
+          type: 'file',
+          name: 'sample.c',
+          content: `#include <stdio.h>
+
+int gcd(int a, int b) {
+    while (b != 0) {
+        int temp = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
+}
+
+int main() {
+    int num1 = 48;
+    int num2 = 18;
+    
+    if (num1 <= 0 || num2 <= 0) {
+        printf("Numbers must be positive\\n");
+        return 1;
+    }
+    
+    int result = gcd(num1, num2);
+    
+    if (result > 1) {
+        printf("GCD is %d\\n", result);
+    } else {
+        printf("Co-prime numbers\\n");
+    }
+    
+    return 0;
+}`
+        },
+        'sample.js': {
+          type: 'file',
+          name: 'sample.js',
+          content: `function processData(limit) {
+    let sum = 0;
+    console.log("Starting calculation...");
+
+    for (let i = 1; i <= limit; i++) {
+        if (i % 3 === 0 && i % 5 === 0) {
+            console.log("FizzBuzz");
+            sum += i * 2;
+        } else if (i % 3 === 0) {
+            console.log("Fizz");
+            sum += i;
+        } else if (i % 5 === 0) {
+            console.log("Buzz");
+            sum += i;
+        } else {
+            console.log(i);
+        }
+    }
+
+    if (sum > 100) {
+        return "High Value";
+    } else {
+        return "Low Value";
+    }
+}
+
+processData(20);`
+        },
+        'sample.ts': {
+          type: 'file',
+          name: 'sample.ts',
+          content: `function analyzeUser(age: number, role: string): boolean {
+    if (age < 18) {
+        return false;
+    }
+
+    if (role === 'admin') {
+        console.log("Access Granted: Admin");
+        return true;
+    }
+
+    let strikes = 0;
+    const actions = ['login', 'view', 'edit'];
+
+    for (const action of actions) {
+        if (action === 'delete') {
+            strikes++;
+        }
+    }
+
+    if (strikes > 0) {
+        return false;
+    }
+
+    return true;
+}
+
+analyzeUser(25, 'user');`
+        }
+      }
+    },
     'config.py': {
       type: 'file',
       name: 'config.py',
@@ -405,9 +526,9 @@ const getLayoutedElements = (nodes, edges) => {
   // Use LR (Left-Right) for more horizontal spread
   dagreGraph.setGraph({
     rankdir: 'TB',     // Top to Bottom main flow
-    nodesep: 120,      // Increased horizontal spacing between nodes
-    ranksep: 100,      // Increased vertical spacing between ranks
-    edgesep: 50,       // Space between edges
+    nodesep: 180,      // Much wider spacing for clarity
+    ranksep: 120,      // More vertical breathing room
+    edgesep: 80,       // Avoid edge overlap
     marginx: 50,
     marginy: 50
   });
@@ -421,7 +542,7 @@ const getLayoutedElements = (nodes, edges) => {
       height = 50;
     }
     if (node.type === "decision") {
-      width = 120;
+      width = 140; // Slightly wider diamonds
       height = 100;
     }
     if (node.type === "loop") {
@@ -430,11 +551,11 @@ const getLayoutedElements = (nodes, edges) => {
     }
     if (node.type === "process") {
       if (!node.data.label) {
-        // Merge point - make it tiny
-        width = 10;
-        height = 10;
+        // Merge point
+        width = 20; // Slightly larger to avoid edge crowding
+        height = 20;
       } else {
-        width = 200;
+        width = 220; // Wider process nodes
         height = 60;
       }
     }
@@ -442,13 +563,18 @@ const getLayoutedElements = (nodes, edges) => {
     dagreGraph.setNode(node.id, { width, height });
   });
 
-  // Add edges with rank constraints for better branching
+  // Add edges with rank constraints
   edges.forEach((edge) => {
+    // Force smoothstep for professional circuit-board look
+    edge.type = 'smoothstep';
+    edge.style = { ...edge.style, strokeWidth: 2, borderRadius: 20 }; // Smooth corners
+    edge.animated = true; // Keep animation
+
     const edgeConfig = {};
 
     // Give False/Done branches more weight to push them horizontally
     if (edge.label === "False" || edge.label === "Done") {
-      edgeConfig.weight = 2; // Higher weight = prefer this path
+      edgeConfig.weight = 3;
     } else if (edge.label === "True" || edge.label === "Loop") {
       edgeConfig.weight = 1;
     }
@@ -587,6 +713,9 @@ const LANG_COLORS = {
   css: { bg: '#1a3a5c', border: '#563d7c', text: '#fff', label: 'CSS' },
   html: { bg: '#6c2e00', border: '#e34c26', text: '#fff', label: 'HTML' },
   md: { bg: '#333', border: '#888', text: '#fff', label: 'Markdown' },
+  cpp: { bg: '#513998', border: '#a074c4', text: '#fff', label: 'C++' },
+  cc: { bg: '#513998', border: '#a074c4', text: '#fff', label: 'C++' },
+  c: { bg: '#283593', border: '#5c6bc0', text: '#fff', label: 'C' },
   default: { bg: '#333', border: '#666', text: '#ccc', label: 'File' }
 };
 
@@ -1433,7 +1562,15 @@ const NewApp = () => {
               </select>
             ) : (
               <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: "bold", background: "#252526", padding: "4px 8px", borderRadius: "3px" }}>
-                {activeFileName.endsWith(".java") ? "JAVA FILE" : "PYTHON FILE"}
+                {(() => {
+                  if (activeFileName.endsWith(".py")) return "PYTHON FILE";
+                  if (activeFileName.endsWith(".java")) return "JAVA FILE";
+                  if (activeFileName.endsWith(".js") || activeFileName.endsWith(".jsx")) return "JS FILE";
+                  if (activeFileName.endsWith(".ts") || activeFileName.endsWith(".tsx")) return "TS FILE";
+                  if (activeFileName.endsWith(".cpp") || activeFileName.endsWith(".cc")) return "C++ FILE";
+                  if (activeFileName.endsWith(".c")) return "C FILE";
+                  return "FILE";
+                })()}
               </div>
             )}
 

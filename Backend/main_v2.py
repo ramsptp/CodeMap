@@ -49,16 +49,22 @@ class ReactFlowBuilder:
         })
         return nid
 
-    def add_edge(self, source, target, label=None):
+    def add_edge(self, source, target, label=None, style=None):
         if source and target:
             edge_id = f"e{source}-{target}-{uuid.uuid4().hex[:4]}"
+            
+            # Default Style
+            edge_style = {"stroke": "#b1b1b7", "strokeWidth": 2}
+            if style:
+                edge_style.update(style)
+                
             edge = {
                 "id": edge_id,
                 "source": source,
                 "target": target,
                 "type": "smoothstep", 
                 "animated": True,
-                "style": {"stroke": "#b1b1b7", "strokeWidth": 2},
+                "style": edge_style,
             }
             if label:
                 edge["label"] = label
@@ -244,25 +250,48 @@ def extract_java_methods(code: str):
     return methods
 
 def parse_java_structure(code):
-    """Parse Java code into statements"""
+    """Parse Java/C++ code into statements, respecting braces and if-else chains"""
     statements = []
     current = []
     depth_brace = 0
     depth_paren = 0
     
-    for char in code:
+    i = 0
+    while i < len(code):
+        char = code[i]
         current.append(char)
+        
         if char == '{': depth_brace += 1
         elif char == '}': depth_brace -= 1
         elif char == '(': depth_paren += 1
         elif char == ')': depth_paren -= 1
         
+        # Check for statement separators
+        # 1. Semicolon at top level
         if char == ';' and depth_brace == 0 and depth_paren == 0:
             statements.append("".join(current).strip())
             current = []
+            
+        # 2. Closing brace at top level
         elif char == '}' and depth_brace == 0:
-            statements.append("".join(current).strip())
-            current = []
+            # Look ahead for 'else' to avoid splitting if-else chains
+            j = i + 1
+            is_else = False
+            while j < len(code):
+                if code[j].isspace():
+                    j += 1
+                    continue
+                # Check if next token is 'else'
+                if code[j:j+4] == "else" and (j+4 >= len(code) or not code[j+4].isalnum()):
+                     is_else = True
+                break
+            
+            if not is_else:
+                statements.append("".join(current).strip())
+                current = []
+            # If it is 'else', we continue accumulating 'current' locally
+            
+        i += 1
             
     if current and "".join(current).strip():
         statements.append("".join(current).strip())
@@ -354,101 +383,262 @@ class JavaFlowBuilder(ReactFlowBuilder):
 # ==========================================
 # 5. JAVASCRIPT / TYPESCRIPT PARSER
 # ==========================================
+# ==========================================
+# 5. JAVASCRIPT / TYPESCRIPT PARSER
+# ==========================================
 class JavaScriptFlowBuilder(ReactFlowBuilder):
+    def process_block(self, stmts, loop_context=None):
+        """Process a sequence of statements. Returns (entry, exit, terminal)"""
+        entry = last_exit = None
+        terminal = False
+        
+        for stmt in stmts:
+            s_entry, s_exit, s_term = self.process_stmt(stmt, loop_context)
+            if not s_entry: continue
+            
+            if entry is None: entry = s_entry
+            if last_exit and not is_terminal_node(last_exit): 
+                self.add_edge(last_exit, s_entry)
+            
+            last_exit = s_exit
+            if s_term:
+                terminal = True
+                break
+                
+        return entry, last_exit, terminal
+
+    def process_stmt(self, stmt, loop_context=None):
+        """Process a single statement string"""
+        
+        # FOR / FOR..OF / FOR..IN
+        if stmt.startswith("for"):
+            header_match = re.search(r"for\s*\((.*?)\)", stmt)
+            header = header_match.group(0) if header_match else "For Loop"
+            
+            loop_node = self.add_node(header, "loop")
+            after = self.add_node("Done", "process") # Exit node
+            
+            # Context for children
+            new_context = {"continue": loop_node, "break": after}
+            
+            body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
+            body_content = body_match.group(1).strip() if body_match else ""
+            
+            if body_content:
+                body_stmts = parse_java_structure(body_content)
+                b_entry, b_exit, b_term = self.process_block(body_stmts, new_context)
+                
+                if b_entry:
+                    self.add_edge(loop_node, b_entry, "Loop")
+                    if b_exit and not b_term:
+                        self.add_edge(b_exit, loop_node)
+            
+            self.add_edge(loop_node, after, "Done")
+            return loop_node, after, False
+
+        # WHILE LOOP
+        elif stmt.startswith("while"):
+            header_match = re.search(r"while\s*\((.*?)\)", stmt)
+            header = header_match.group(0) if header_match else "While Loop"
+            
+            loop_node = self.add_node(header, "loop")
+            after = self.add_node("Done", "process")
+            
+            new_context = {"continue": loop_node, "break": after}
+            
+            body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
+            body_content = body_match.group(1).strip() if body_match else ""
+            
+            if body_content:
+                body_stmts = parse_java_structure(body_content)
+                b_entry, b_exit, b_term = self.process_block(body_stmts, new_context)
+                
+                if b_entry:
+                    self.add_edge(loop_node, b_entry, "Loop")
+                    if b_exit and not b_term:
+                        self.add_edge(b_exit, loop_node)
+            
+            self.add_edge(loop_node, after, "Done")
+            return loop_node, after, False
+
+        # IF STATEMENT
+        elif stmt.startswith("if"):
+            # 1. Parse Header
+            header_end_idx = 0
+            paren_count = 0
+            in_paren = False
+            for i, char in enumerate(stmt):
+                if char == '(':
+                    if not in_paren: in_paren = True
+                    paren_count += 1
+                elif char == ')':
+                    paren_count -= 1
+                    if in_paren and paren_count == 0:
+                        header_end_idx = i + 1
+                        break
+            
+            header = stmt[:header_end_idx].strip()
+            rest = stmt[header_end_idx:].strip()
+            
+            # 2. Identify True Body and Else Part
+            if_body = ""
+            else_part = None
+            
+            if rest.startswith("{"):
+                # Braced Body: Find matching '}'
+                brace_count = 0
+                body_end_idx = 0
+                for i, char in enumerate(rest):
+                    if char == '{': brace_count += 1
+                    elif char == '}': 
+                        brace_count -= 1
+                        if brace_count == 0:
+                            body_end_idx = i + 1
+                            break
+                if_body = rest[:body_end_idx]
+                potential_else = rest[body_end_idx:].strip()
+                if potential_else.startswith("else"):
+                    else_part = potential_else[4:].strip()
+            else:
+                # Unbraced Body: complicated because we don't know where it ends easily inside this string
+                # BUT since parse_java_structure groups if/else, 
+                # if there is an 'else', it must be at the end?
+                # Actually, checking for 'else' via split is safer for unbraced single statements
+                # provided strings don't contain "else".
+                # For safety/simplicity in unbraced case, we assume split("else", 1) is acceptable
+                # OR we can scan for semicolon? 
+                # If unbraced, it should be a single statement ending in semicolon.
+                # Let's try to find 'else' keyword token
+                
+                # Simple fallback for unbraced: split on "else " (with space) or "else{" or just "else"
+                # To be robust, we'll try to find "else" that is NOT in a string/quote.
+                # For now, simplistic split is likely okay for unbraced code
+                parts = stmt.split("else", 1) 
+                # Wait, if we use split, we must apply it to 'stmt' but careful about header
+                # Re-using naive split for UNBRACED cases is acceptable risk for now
+                if "else" in rest:
+                     # Find last 'else'? No, first 'else'.
+                     split_idx = rest.find("else")
+                     if_body = rest[:split_idx].strip()
+                     else_part = rest[split_idx+4:].strip()
+                else:
+                    if_body = rest
+            
+            decision = self.add_node(header, "decision")
+            
+            # Process True Body
+            t_entry = t_exit = t_term = None
+            if if_body:
+                # Remove outer braces for processing
+                content = if_body
+                if content.startswith("{") and content.endswith("}"):
+                    content = content[1:-1].strip()
+                
+                if content:
+                    t_stmts = parse_java_structure(content)
+                    t_entry, t_exit, t_term = self.process_block(t_stmts, loop_context)
+
+            if t_entry:
+                self.add_edge(decision, t_entry, "True")
+
+            # Process False Body
+            f_entry = f_exit = f_term = None
+            if else_part:
+                if else_part.startswith("if"):
+                     # else if...
+                    f_entry, f_exit, f_term = self.process_stmt(else_part, loop_context)
+                else:
+                    # else { ... }
+                    content = else_part
+                    if content.startswith("{") and content.endswith("}"):
+                        content = content[1:-1].strip()
+                    
+                    if content:
+                        f_stmts = parse_java_structure(content)
+                        f_entry, f_exit, f_term = self.process_block(f_stmts, loop_context)
+            
+            if f_entry:
+                self.add_edge(decision, f_entry, "False")
+
+            if t_term and f_term:
+                 return decision, None, True
+            
+            merge = self.add_node("", "process") # Use process with empty label for dot rendering
+            
+            if t_exit and not t_term: self.add_edge(t_exit, merge)
+            elif not t_entry: self.add_edge(decision, merge, "True")
+            
+            if f_exit and not f_term: self.add_edge(f_exit, merge)
+            elif not f_entry: self.add_edge(decision, merge, "False")
+            
+            return decision, merge, False
+
+        # RETURN
+        elif stmt.startswith("return"):
+            # Clean label
+            label = stmt.replace("return", "").strip().replace(";", "")
+            if not label: label = "Return"
+            else: label = f"Return {label}"
+            
+            node = self.add_node(label, "terminator")
+            return node, node, True
+        
+        # CONTINUE
+        elif stmt.startswith("continue"):
+            node = self.add_node("continue", "process")
+            if loop_context and "continue" in loop_context:
+                self.add_edge(node, loop_context["continue"], style={"strokeDasharray": "5,5"})
+            return node, node, True # Terminal for local flow
+            
+        # BREAK
+        elif stmt.startswith("break"):
+            node = self.add_node("break", "process")
+            if loop_context and "break" in loop_context:
+                self.add_edge(node, loop_context["break"], style={"strokeDasharray": "5,5"})
+            return node, node, True # Terminal for local flow
+
+        # REGULAR
+        else:
+            # Clean up label: remove wrapping braces if they exist (artifact of lazy parsing)
+            # Clean up label: remove wrapping braces first
+            label = stmt.strip()
+            if label.startswith("{") and label.endswith("}"):
+                label = label[1:-1].strip()
+            
+            # C++ specific cleanup
+            label = label.replace("std::", "")
+            label = label.replace("<< endl", "")
+            label = label.replace("<< std::endl", "")
+            label = " ".join(label.split()) # Collapse whitespace
+            
+            # Truncate if too long
+            if len(label) > 40: label = label[:37] + "..."
+            
+            node = self.add_node(label, "process")
+            return node, node, False
+
     def build_for_body(self, name, body_text):
         """Build flowchart for JS/TS function body"""
         self.nodes, self.edges, self._id_counter = [], [], 0
         start = self.add_node(f"Start: {name}", "terminator")
-        last_node = start
         
-        # Simple brace-based statement splitter (improved regex needed for production)
-        # This checks for basic control structures
-        stmts = parse_java_structure(body_text) # Reuse Java parser logic as C-style syntax is similar
+        stmts = parse_java_structure(body_text)
+        entry, exit_node, _ = self.process_block(stmts)
         
-        for stmt in stmts:
-            # FOR / FOR..OF / FOR..IN
-            if stmt.startswith("for"):
-                header_match = re.search(r"for\s*\((.*?)\)", stmt)
-                header = header_match.group(0) if header_match else "For Loop"
-                
-                loop_node = self.add_node(header, "loop")
-                self.add_edge(last_node, loop_node)
-                
-                body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
-                body_content = body_match.group(1).strip() if body_match else "..."
-                
-                body_node = self.add_node(body_content, "process")
-                self.add_edge(loop_node, body_node, "Loop")
-                self.add_edge(body_node, loop_node)
-                
-                merge = self.add_node("", "process")
-                self.add_edge(loop_node, merge, "Done")
-                last_node = merge
-
-            # WHILE LOOP
-            elif stmt.startswith("while"):
-                header_match = re.search(r"while\s*\((.*?)\)", stmt)
-                header = header_match.group(0) if header_match else "While Loop"
-                
-                loop_node = self.add_node(header, "loop")
-                self.add_edge(last_node, loop_node)
-                
-                body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
-                body_content = body_match.group(1).strip() if body_match else "..."
-                
-                body_node = self.add_node(body_content, "process")
-                self.add_edge(loop_node, body_node, "Loop")
-                self.add_edge(body_node, loop_node)
-                
-                merge = self.add_node("", "process")
-                self.add_edge(loop_node, merge, "Done")
-                last_node = merge
-
-            # IF STATEMENT
-            elif stmt.startswith("if"):
-                header_match = re.search(r"if\s*\((.*?)\)", stmt)
-                header = header_match.group(0) if header_match else "If"
-                
-                decision = self.add_node(header, "decision")
-                self.add_edge(last_node, decision)
-                
-                body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
-                body_content = body_match.group(1).strip() if body_match else "..."
-                
-                true_node = self.add_node(body_content, "process")
-                self.add_edge(decision, true_node, "True")
-                
-                # Check for ELSE
-                if "else" in stmt:
-                    else_match = re.search(r"else\s*\{(.*)\}", stmt, re.DOTALL)
-                    else_content = else_match.group(1).strip() if else_match else "..."
-                    false_node = self.add_node(else_content, "process")
-                    self.add_edge(decision, false_node, "False")
-                    
-                    merge = self.add_node("", "process")
-                    self.add_edge(true_node, merge)
-                    self.add_edge(false_node, merge)
-                    last_node = merge
-                else:
-                    merge = self.add_node("", "process")
-                    self.add_edge(true_node, merge)
-                    self.add_edge(decision, merge, "False")
-                    last_node = merge
-
-            # RETURN
-            elif stmt.startswith("return"):
-                node = self.add_node(stmt, "terminator")
-                self.add_edge(last_node, node)
-                last_node = None # Terminal
+        if entry:
+            self.add_edge(start, entry)
             
-            # VARIABLES / EXPRESSIONS
-            else:
-                node = self.add_node(stmt, "process")
-                if last_node:
-                    self.add_edge(last_node, node)
-                last_node = node
-                
         return self.get_data()
+
+def is_terminal_node(node_id):
+    # This helper would need access to nodes to check type. 
+    # For now, we rely on the boolean flag returned by process_stmt
+    return False 
+
+# Helper to check if node is terminator type? 
+# We don't have easy access to node list here. 
+# We'll rely on the manual boolean flags passed around.
+
 
 def calculate_js_complexity(code):
     complexity = 1
@@ -513,8 +703,11 @@ def extract_cpp_methods(code):
     keyword_pattern = "|".join(keywords)
     
     # Basic robust regex
+    # Matches: Type Name(Args) {
+    # Type can include *, &, spaces (e.g. unsigned int, int*)
+    # Use non-greedy match for Type to avoid eating Name
     regex = re.compile(
-        r"([\w:<>]+)\s+(\w+)\s*\((.*?)\)\s*(const)?\s*\{", 
+        r"([\w:<>*&\s]+?)\s+(\w+)\s*\((.*?)\)\s*(const)?\s*\{", 
         re.MULTILINE
     )
     
