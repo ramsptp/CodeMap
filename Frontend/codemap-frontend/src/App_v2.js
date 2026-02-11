@@ -648,7 +648,7 @@ const FileDepNode = ({ data }) => {
   );
 };
 
-const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) => {
+const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -656,7 +656,17 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) =>
     fileNode: FileDepNode
   }), []);
 
-  // Build nodes and edges from dependency data
+  // Generate a key for the current graph structure to manage memory
+  const graphKey = useMemo(() => {
+    if (!dependencies?.imports && !dependencies?.importedBy) return 'empty';
+    // Create a simple hash based on file names involved
+    const files = new Set();
+    dependencies.imports?.forEach((_, k) => files.add(k));
+    dependencies.importedBy?.forEach((_, k) => files.add(k));
+    return `file-dep-${Array.from(files).sort().join('|')}`;
+  }, [dependencies]);
+
+  // 1. Structure & Layout Effect (Runs only when dependencies change)
   useEffect(() => {
     if (!dependencies) return;
 
@@ -673,7 +683,21 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) =>
 
     if (allFiles.size === 0) return;
 
-    // Create nodes
+    // Check memory first
+    if (graphMemory && graphMemory[graphKey]) {
+      console.log(`📦 Loading file graph layout from memory: ${graphKey}`);
+      const savedData = graphMemory[graphKey];
+      setNodes(savedData.nodes.map(n => ({
+        ...n,
+        data: { ...n.data, isSelected: n.id === selectedFile }
+      })));
+      setEdges(savedData.edges);
+      return;
+    }
+
+    console.log(`🔄 Calculating new file graph layout`);
+
+    // Create Base Nodes
     const newNodes = Array.from(allFiles).map(filePath => {
       const fileName = filePath.split('/').pop();
       const folderPath = filePath.split('/').slice(0, -1).join('/');
@@ -688,11 +712,11 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) =>
           colors,
           isSelected: filePath === selectedFile,
         },
-        position: { x: 0, y: 0 }, // dagre will set this
+        position: { x: 0, y: 0 },
       };
     });
 
-    // Create edges
+    // Create Edges
     const newEdges = [];
     dependencies.imports?.forEach((deps, sourceFile) => {
       deps.forEach(targetFile => {
@@ -710,7 +734,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) =>
       });
     });
 
-    // Layout with dagre
+    // Run Dagre Layout
     const g = new dagre.graphlib.Graph();
     g.setDefaultEdgeLabel(() => ({}));
     g.setGraph({
@@ -742,7 +766,46 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) =>
 
     setNodes(layoutedNodes);
     setEdges(newEdges);
-  }, [dependencies, selectedFile, fileTree, setNodes, setEdges]);
+
+    // Save initial layout to memory
+    if (setGraphMemory) {
+      setGraphMemory(prev => ({
+        ...prev,
+        [graphKey]: { nodes: layoutedNodes, edges: newEdges }
+      }));
+    }
+  }, [graphKey, dependencies, setGraphMemory, graphMemory]); // Intentionally exclude selectedFile
+
+  // 2. Selection Effect (Runs when selectedFile changes)
+  useEffect(() => {
+    setNodes(nds => nds.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        isSelected: node.id === selectedFile
+      }
+    })));
+  }, [selectedFile, setNodes]);
+
+  // 3. Drag Persistence
+  const onNodeDragStop = useCallback((event, node) => {
+    // Determine current nodes (React Flow state)
+    // We need to access the LATEST nodes state to save it. 
+    // Since we can't access state directly inside this callback without dependency,
+    // we rely on the node passed, but we need ALL nodes.
+    // Actually, setGraphMemory callback works best here.
+
+    setNodes(nds => {
+      // Save the *updated* nodes to memory
+      if (setGraphMemory) {
+        setGraphMemory(prev => ({
+          ...prev,
+          [graphKey]: { nodes: nds, edges }
+        }));
+      }
+      return nds;
+    });
+  }, [graphKey, setGraphMemory, edges, setNodes]);
 
   const handleNodeClick = useCallback((event, node) => {
     if (onFileSelect) {
@@ -761,6 +824,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect }) =>
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 0.3 }}
@@ -1281,6 +1345,8 @@ const NewApp = () => {
                 fileTree={fileTree}
                 selectedFile={selectedFilePath}
                 onFileSelect={handleFileSelect}
+                graphMemory={graphMemory}
+                setGraphMemory={setGraphMemory}
               />
             </div>
           )}
