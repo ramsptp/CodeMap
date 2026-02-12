@@ -659,11 +659,12 @@ def calculate_js_complexity(code):
     return complexity
 
 def extract_js_functions(code):
-    """Extract standard functions and arrow functions"""
+    """Extract standard functions and arrow functions (supports TS types)"""
     funcs = []
     
-    # 1. Standard: function foo() {}
-    std_regex = re.compile(r"function\s+(\w+)\s*\((.*?)\)\s*\{", re.MULTILINE)
+    # 1. Standard: function foo(args): Type {
+    # Regex: function \s+ name \s* (args) \s* (: Type)? \s* {
+    std_regex = re.compile(r"function\s+(\w+)\s*\((.*?)\)\s*(?::\s*[^\{]+)?\s*\{", re.MULTILINE)
     for m in std_regex.finditer(code):
         start = m.end()
         # Find matching brace
@@ -676,8 +677,9 @@ def extract_js_functions(code):
         body = code[start:i-1].strip()
         funcs.append({"name": m.group(1), "body": body, "type": "standard"})
 
-    # 2. Arrow: const foo = () => {}
-    arrow_regex = re.compile(r"(const|let|var)\s+(\w+)\s*=\s*(\(.*\)|[\w]+)\s*=>\s*\{", re.MULTILINE)
+    # 2. Arrow: const foo = (args): Type => {
+    # Regex: (const|let|var) name = (args) (: Type)? => {
+    arrow_regex = re.compile(r"(const|let|var)\s+(\w+)\s*=\s*(\(.*\)|[\w]+)\s*(?::\s*[^\{=]+)?\s*=>\s*\{", re.MULTILINE)
     for m in arrow_regex.finditer(code):
         start = m.end()
         brace = 1
@@ -688,6 +690,8 @@ def extract_js_functions(code):
             i += 1
         body = code[start:i-1].strip()
         funcs.append({"name": m.group(2), "body": body, "type": "arrow"})
+        
+    return funcs
         
     return funcs
 
