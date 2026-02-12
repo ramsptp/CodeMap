@@ -512,6 +512,7 @@ const LoopNode = ({ data }) => {
         {data.label}
       </div>
       <Handle type="target" position={Position.Top} style={{ top: 0, background: '#555' }} />
+      <Handle type="target" position={Position.Left} id="left" style={{ left: 0, background: '#555' }} />
       <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 0, background: '#555' }} />
       <Handle type="source" position={Position.Right} id="right" style={{ right: 0, background: '#555' }} />
     </div>
@@ -521,15 +522,14 @@ const LoopNode = ({ data }) => {
 // ===========================================
 // 2. LAYOUT ENGINE (IMPROVED HORIZONTAL BRANCHING)
 // ===========================================
-const dagreGraph = new dagre.graphlib.Graph();
-dagreGraph.setDefaultEdgeLabel(() => ({}));
-
 const getLayoutedElements = (nodes, edges) => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
   // Use LR (Left-Right) for more horizontal spread
   dagreGraph.setGraph({
     rankdir: 'TB',     // Top to Bottom main flow
-    nodesep: 60,       // Compact horizontal spacing
-    ranksep: 60,       // Compact vertical spacing
+    nodesep: 80,       // Increased horizontal spacing
+    ranksep: 80,       // Increased vertical spacing
     edgesep: 40,       // Tighter edges
     marginx: 50,
     marginy: 50
@@ -553,9 +553,9 @@ const getLayoutedElements = (nodes, edges) => {
     }
     if (node.type === "process") {
       if (!node.data.label) {
-        // Merge point
-        width = 20; // Slightly larger to avoid edge crowding
-        height = 20;
+        // Invisible Merge Node
+        width = 1;
+        height = 1;
       } else {
         width = 220; // Wider process nodes
         height = 60;
@@ -576,7 +576,7 @@ const getLayoutedElements = (nodes, edges) => {
 
     // Give False/Done branches more weight to push them horizontally
     if (edge.label === "False" || edge.label === "Done") {
-      edgeConfig.weight = 3;
+      edgeConfig.weight = 2; // slightly less than before to allow manual override
     } else if (edge.label === "True" || edge.label === "Loop") {
       edgeConfig.weight = 1;
     }
@@ -587,38 +587,45 @@ const getLayoutedElements = (nodes, edges) => {
   dagre.layout(dagreGraph);
 
   // ===============================================
-  // POST-PROCESSING: STICT "TRUE -> RIGHT" ENFORCEMENT
+  // POST-PROCESSING: THE "IRON SPINE" ALGORITHM
   // ===============================================
-  // Dagre doesn't guarantee left/right order. We must manually shift "True" branches.
 
-  // Helper to count parents (incoming edges)
-  const incomingCounts = {};
-  edges.forEach(e => {
-    incomingCounts[e.target] = (incomingCounts[e.target] || 0) + 1;
-  });
+  // 1. Helper: Force a vertical line down from a start node (Brute Force)
+  const forceRightBranchAlignment = (startNodeId, targetX, visited = new Set()) => {
+    if (visited.has(startNodeId)) return;
+    visited.add(startNodeId);
 
-  // Recursive shifter
+    const node = dagreGraph.node(startNodeId);
+    if (!node) return;
+
+    // FORCE X
+    node.x = targetX;
+
+    // Propagate to all children
+    const childrenEdges = edges.filter(e => e.source === startNodeId);
+    childrenEdges.forEach(e => {
+      // If it's a loop back (target is "above" or "loop"), maybe stop?
+      // But usually loop backs are distinct edges.
+      // We just follow "downstream".
+      forceRightBranchAlignment(e.target, targetX, visited);
+    });
+  };
+
+  // 2. Helper: Shift a subtree (for initial placement)
   const shiftSubtree = (nodeId, deltaX, visited = new Set()) => {
     if (visited.has(nodeId)) return;
     visited.add(nodeId);
-
     const node = dagreGraph.node(nodeId);
     if (node) {
       node.x += deltaX;
-
-      // Propagate to children
-      // ONLY if they are single-parent nodes (exclusive to this branch)
-      // If it's a merge node (multiple parents), we stop shifting
-      const outEdges = edges.filter(e => e.source === nodeId);
-      outEdges.forEach(e => {
-        if (incomingCounts[e.target] === 1) {
-          shiftSubtree(e.target, deltaX, visited);
-        }
+      edges.filter(e => e.source === nodeId).forEach(e => {
+        // Only shift if we own it (dominator check simplified)
+        shiftSubtree(e.target, deltaX, visited);
       });
     }
   };
 
-  // Recursive Vertical Aligner
+  // 3. Helper: Standard Recursive Vertical Aligner (for Down/False branch)
   const alignVertical = (targetId, targetX, visited = new Set()) => {
     if (visited.has(targetId)) return;
     visited.add(targetId);
@@ -626,61 +633,46 @@ const getLayoutedElements = (nodes, edges) => {
     const targetNode = dagreGraph.node(targetId);
     if (!targetNode) return;
 
-    // Align this node
-    const currentDelta = targetX - targetNode.x;
-    if (Math.abs(currentDelta) > 2) {
+    if (Math.abs(targetX - targetNode.x) > 1) {
       targetNode.x = targetX;
     }
 
-    const nodeObj = nodes.find(n => n.id === targetId);
-    if (!nodeObj) return;
-
-    // Stop at Merge Nodes (unless it is the immediate target, which we already moved)
-    // Actually, we want to align the merge node too if it's the start of the chain.
-    // But if we recurse, we stop at merge nodes to avoid hijacking other branches.
-    if (nodeObj.type === 'process' && !nodeObj.data.label) {
-      // If this node is a merge node, should we continue?
-      // For "Done" branch, the first node IS a merge node (empty).
-      // We moved it. We should propagate to its child (Return a).
-      // So we should NOT stop here if it is the *first* node or part of the chain.
-      // But we should check branching.
-    }
-
+    // Recursion: Propagate to ALL children that are exclusively reached by this path
     const childrenEdges = edges.filter(e => e.source === targetId);
-    if (childrenEdges.length === 1) {
-      alignVertical(childrenEdges[0].target, targetX, visited);
-    }
+    // Simple heuristic for Down branch: just follow the first child?
+    // Or follow all single-parent children.
+    childrenEdges.forEach(edge => {
+      const childId = edge.target;
+      // Check dominator?
+      const incoming = edges.filter(e => e.target === childId).length;
+      if (incoming === 1) {
+        alignVertical(childId, targetX, visited);
+      }
+    });
   };
 
-  // Scan Decision Nodes
+  // Scan Decision AND Loop Nodes
   nodes.forEach(node => {
-    if (node.type === "decision") {
+    if (node.type === "decision" || node.type === "loop") {
       const decisionNode = dagreGraph.node(node.id);
 
-      // 1. Right Branch ("True" or "Done") -> Shift Right + Align Vertical
+      // --- RIGHT BRANCH (True / Done) ---
       const rightEdge = edges.find(e => e.source === node.id && (e.label === "True" || e.label === "Done"));
-
       if (rightEdge) {
         const targetId = rightEdge.target;
         const targetNode = dagreGraph.node(targetId);
 
-        // Ensure minimum Right Spacing
-        let finalX = targetNode.x;
-        const minX = decisionNode.x + 150;
+        // 1. Calculate ideal X (Right of Decision)
+        const idealX = decisionNode.x + 200; // Fixed offset
 
-        if (targetNode.x < minX) {
-          const shift = minX - targetNode.x;
-          shiftSubtree(targetId, shift);
-          finalX = minX;
-        }
-
-        // Enforce Vertical Alignment on the Right Branch
-        alignVertical(targetId, finalX);
+        // 2. Force the entire spine to this X (Aggressive)
+        forceRightBranchAlignment(targetId, idealX);
       }
 
-      // 2. Down Branch ("False" or "Loop") -> Align Vertical (to Decision X)
+      // --- DOWN BRANCH (False / Loop) ---
       const downEdge = edges.find(e => e.source === node.id && (e.label === "False" || e.label === "Loop"));
       if (downEdge) {
+        // Use standard alignVertical for Down branch
         alignVertical(downEdge.target, decisionNode.x);
       }
     }
@@ -698,7 +690,7 @@ const getLayoutedElements = (nodes, edges) => {
       yOffset = 25;
     }
     if (node.type === 'decision') {
-      xOffset = 70; // Adjusted for new width
+      xOffset = 70;
       yOffset = 50;
     }
     if (node.type === 'loop') {
@@ -706,22 +698,33 @@ const getLayoutedElements = (nodes, edges) => {
       yOffset = 35;
     }
     if (node.type === 'process') {
-      // ... existing logic ...
       if (!node.data.label) {
-        xOffset = 10;
-        yOffset = 10;
+        // Invisible dot centering
+        xOffset = 0;
+        yOffset = 0;
       } else {
         xOffset = 110;
         yOffset = 30;
       }
     }
 
+    // Final visibility check for empty nodes
+    const style = { ...node.style };
+    if (node.type === 'process' && !node.data.label) {
+      style.opacity = 0;
+      style.width = 1;
+      style.height = 1;
+    }
+
     return {
       ...node,
+      style,
       position: {
         x: nodeWithPosition.x - xOffset,
         y: nodeWithPosition.y - yOffset,
       },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
     };
   });
 
@@ -731,16 +734,16 @@ const getLayoutedElements = (nodes, edges) => {
 // ===========================================
 // 3. GRAPH COMPONENT (WITH LAYOUT MEMORY)
 // ===========================================
+const nodeTypes = {
+  terminator: TerminatorNode,
+  process: ProcessNode,
+  decision: DecisionNode,
+  loop: LoopNode
+};
+
 const FlowGraph = ({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-  const nodeTypes = useMemo(() => ({
-    terminator: TerminatorNode,
-    process: ProcessNode,
-    decision: DecisionNode,
-    loop: LoopNode
-  }), []);
 
   // Create a unique key based on node IDs to force re-layout when needed
   const graphKey = useMemo(() => {
@@ -748,37 +751,32 @@ const FlowGraph = ({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }
     return data.nodes.map(n => n.id).join('-');
   }, [data]);
 
-  // Calculate or retrieve layout
+  // Calculate  // MEMOIZED LAYOUT
   const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(() => {
-    if (!data || !data.nodes || data.nodes.length === 0) {
-      return { nodes: [], edges: [] };
-    }
+    // FORCE RECALCULATION (DEBUGGING) - Ignore Cache
+    // const cacheKey = `${selectedFile?.name}:${selectedFunction || 'overview'}`;
+    // if (layoutCache.current[cacheKey]) {
+    //   console.log(`📦 Loading layout from memory: ${cacheKey}`);
+    //   return layoutCache.current[cacheKey];
+    // }
 
-    // Check if we have this layout in memory
-    if (memoryKey && graphMemory[memoryKey]) {
-      console.log(`📦 Loading layout from memory: ${memoryKey}`);
-      return graphMemory[memoryKey];
-    }
+    if (!data || !data.nodes || data.nodes.length === 0) return { nodes: [], edges: [] };
 
-    // Calculate new layout
     console.log(`🔄 Calculating new layout: ${memoryKey || 'unnamed'}`);
     const layout = getLayoutedElements(data.nodes, data.edges || []);
 
-    // Save to memory if we have a key
-    if (memoryKey && setGraphMemory) {
-      setGraphMemory(prev => ({
-        ...prev,
-        [memoryKey]: layout
-      }));
-    }
-
+    // layoutCache.current[cacheKey] = layout; // Disable saving to cache
     return layout;
-  }, [graphKey, memoryKey, graphMemory, data, setGraphMemory]);
+  }, [data.nodes, data.edges, memoryKey]); // Removed graphKey to avoid loops: layout
 
   // Update React Flow state when layout changes
   useEffect(() => {
-    setNodes(layoutedNodes);
-    setEdges(layoutedEdges);
+    if (layoutedNodes.length > 0) {
+      // Only update if actually different to avoid loops
+      // Simple length check or just trust the memo
+      setNodes(layoutedNodes);
+      setEdges(layoutedEdges);
+    }
   }, [layoutedNodes, layoutedEdges, setNodes, setEdges]);
 
   return (
@@ -942,14 +940,14 @@ const FileDepNode = ({ data }) => {
   );
 };
 
+const fileDepGraphNodeTypes = {
+  fileNode: FileDepNode
+};
+
 const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [hoveredNode, setHoveredNode] = useState(null);
-
-  const nodeTypes = useMemo(() => ({
-    fileNode: FileDepNode
-  }), []);
 
   // Generate a key for current graph structure
   const graphKey = useMemo(() => {

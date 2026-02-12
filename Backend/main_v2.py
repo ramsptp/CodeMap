@@ -49,7 +49,7 @@ class ReactFlowBuilder:
         })
         return nid
 
-    def add_edge(self, source, target, label=None, style=None, sourceHandle=None):
+    def add_edge(self, source, target, label=None, style=None, sourceHandle=None, targetHandle=None):
         if source and target:
             edge_id = f"e{source}-{target}-{uuid.uuid4().hex[:4]}"
             
@@ -68,6 +68,8 @@ class ReactFlowBuilder:
             }
             if sourceHandle:
                 edge["sourceHandle"] = sourceHandle
+            if targetHandle:
+                edge["targetHandle"] = targetHandle
             if label:
                 edge["label"] = label
                 
@@ -433,10 +435,9 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                 if b_entry:
                     self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
                     if b_exit and not b_term:
-                        self.add_edge(b_exit, loop_node)
+                        self.add_edge(b_exit, loop_node, targetHandle="left")
             
-            # after = self.add_node("Done", "process") # OLD
-            after = self.add_node("", "process") # NEW: Invisible merge point
+            after = self.add_node("Done", "process")
             
             self.add_edge(loop_node, after, "Done", sourceHandle="right")
             return loop_node, after, False
@@ -447,8 +448,7 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
             header = header_match.group(0) if header_match else "While Loop"
             
             loop_node = self.add_node(header, "loop")
-            # after = self.add_node("Done", "process") # OLD
-            after = self.add_node("", "process") # NEW: Invisible merge point
+            after = self.add_node("Done", "process")
             
             new_context = {"continue": loop_node, "break": after}
             
@@ -463,7 +463,7 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                     # Loop Body -> Bottom (User request)
                     self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
                     if b_exit and not b_term:
-                        self.add_edge(b_exit, loop_node)
+                        self.add_edge(b_exit, loop_node, targetHandle="left")
             
             # Done -> Right (User request)
             self.add_edge(loop_node, after, "Done", sourceHandle="right")
