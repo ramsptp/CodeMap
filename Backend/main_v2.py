@@ -324,11 +324,13 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
                 body_node = self.add_node(body_content, "process")
-                self.add_edge(loop_node, body_node, "Loop")
-                self.add_edge(body_node, loop_node)  # Loop back
+                if b_entry:
+                    self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
+                    if b_exit and not b_term:
+                        self.add_edge(b_exit, loop_node, targetHandle="left")
                 
                 merge = self.add_node("", "process")  # Merge point
-                self.add_edge(loop_node, merge, "Done")
+                self.add_edge(loop_node, merge, "Done", sourceHandle="right")
                 last_node = merge
             
             # WHILE LOOP
@@ -343,11 +345,11 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
                 body_node = self.add_node(body_content, "process")
-                self.add_edge(loop_node, body_node, "Loop")
-                self.add_edge(body_node, loop_node)  # Loop back
+                self.add_edge(loop_node, body_node, "Loop", sourceHandle="bottom")
+                self.add_edge(body_node, loop_node, targetHandle="left")  # Loop back
                 
                 merge = self.add_node("", "process")  # Merge point
-                self.add_edge(loop_node, merge, "Done")
+                self.add_edge(loop_node, merge, "Done", sourceHandle="right")
                 last_node = merge
 
             # IF STATEMENT
@@ -362,11 +364,11 @@ class JavaFlowBuilder(ReactFlowBuilder):
                 body_content = body_match.group(1).strip() if body_match else "..."
                 
                 true_node = self.add_node(body_content, "process")
-                self.add_edge(decision, true_node, "True")
+                self.add_edge(decision, true_node, "True", sourceHandle="right")
                 
                 merge = self.add_node("", "process")  # Merge point
                 self.add_edge(true_node, merge)
-                self.add_edge(decision, merge, "False")
+                self.add_edge(decision, merge, "False", sourceHandle="bottom")
                 last_node = merge
 
             # RETURN STATEMENT
