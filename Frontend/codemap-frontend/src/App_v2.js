@@ -483,7 +483,8 @@ const DecisionNode = ({ data }) => {
         {data.label}
       </div>
       <Handle type="target" position={Position.Top} style={{ top: 10, background: '#555' }} />
-      <Handle type="source" position={Position.Bottom} style={{ bottom: 10, background: '#555' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 10, background: '#555' }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ right: 10, background: '#555' }} />
     </div>
   );
 };
@@ -511,7 +512,8 @@ const LoopNode = ({ data }) => {
         {data.label}
       </div>
       <Handle type="target" position={Position.Top} style={{ top: 0, background: '#555' }} />
-      <Handle type="source" position={Position.Bottom} style={{ bottom: 0, background: '#555' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 0, background: '#555' }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ right: 0, background: '#555' }} />
     </div>
   );
 };
@@ -526,9 +528,9 @@ const getLayoutedElements = (nodes, edges) => {
   // Use LR (Left-Right) for more horizontal spread
   dagreGraph.setGraph({
     rankdir: 'TB',     // Top to Bottom main flow
-    nodesep: 180,      // Much wider spacing for clarity
-    ranksep: 120,      // More vertical breathing room
-    edgesep: 80,       // Avoid edge overlap
+    nodesep: 60,       // Compact horizontal spacing
+    ranksep: 60,       // Compact vertical spacing
+    edgesep: 40,       // Tighter edges
     marginx: 50,
     marginy: 50
   });
@@ -584,6 +586,106 @@ const getLayoutedElements = (nodes, edges) => {
 
   dagre.layout(dagreGraph);
 
+  // ===============================================
+  // POST-PROCESSING: STICT "TRUE -> RIGHT" ENFORCEMENT
+  // ===============================================
+  // Dagre doesn't guarantee left/right order. We must manually shift "True" branches.
+
+  // Helper to count parents (incoming edges)
+  const incomingCounts = {};
+  edges.forEach(e => {
+    incomingCounts[e.target] = (incomingCounts[e.target] || 0) + 1;
+  });
+
+  // Recursive shifter
+  const shiftSubtree = (nodeId, deltaX, visited = new Set()) => {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+
+    const node = dagreGraph.node(nodeId);
+    if (node) {
+      node.x += deltaX;
+
+      // Propagate to children
+      // ONLY if they are single-parent nodes (exclusive to this branch)
+      // If it's a merge node (multiple parents), we stop shifting
+      const outEdges = edges.filter(e => e.source === nodeId);
+      outEdges.forEach(e => {
+        if (incomingCounts[e.target] === 1) {
+          shiftSubtree(e.target, deltaX, visited);
+        }
+      });
+    }
+  };
+
+  // Recursive Vertical Aligner
+  const alignVertical = (targetId, targetX, visited = new Set()) => {
+    if (visited.has(targetId)) return;
+    visited.add(targetId);
+
+    const targetNode = dagreGraph.node(targetId);
+    if (!targetNode) return;
+
+    // Align this node
+    const currentDelta = targetX - targetNode.x;
+    if (Math.abs(currentDelta) > 2) {
+      targetNode.x = targetX;
+    }
+
+    const nodeObj = nodes.find(n => n.id === targetId);
+    if (!nodeObj) return;
+
+    // Stop at Merge Nodes (unless it is the immediate target, which we already moved)
+    // Actually, we want to align the merge node too if it's the start of the chain.
+    // But if we recurse, we stop at merge nodes to avoid hijacking other branches.
+    if (nodeObj.type === 'process' && !nodeObj.data.label) {
+      // If this node is a merge node, should we continue?
+      // For "Done" branch, the first node IS a merge node (empty).
+      // We moved it. We should propagate to its child (Return a).
+      // So we should NOT stop here if it is the *first* node or part of the chain.
+      // But we should check branching.
+    }
+
+    const childrenEdges = edges.filter(e => e.source === targetId);
+    if (childrenEdges.length === 1) {
+      alignVertical(childrenEdges[0].target, targetX, visited);
+    }
+  };
+
+  // Scan Decision Nodes
+  nodes.forEach(node => {
+    if (node.type === "decision") {
+      const decisionNode = dagreGraph.node(node.id);
+
+      // 1. Right Branch ("True" or "Done") -> Shift Right + Align Vertical
+      const rightEdge = edges.find(e => e.source === node.id && (e.label === "True" || e.label === "Done"));
+
+      if (rightEdge) {
+        const targetId = rightEdge.target;
+        const targetNode = dagreGraph.node(targetId);
+
+        // Ensure minimum Right Spacing
+        let finalX = targetNode.x;
+        const minX = decisionNode.x + 150;
+
+        if (targetNode.x < minX) {
+          const shift = minX - targetNode.x;
+          shiftSubtree(targetId, shift);
+          finalX = minX;
+        }
+
+        // Enforce Vertical Alignment on the Right Branch
+        alignVertical(targetId, finalX);
+      }
+
+      // 2. Down Branch ("False" or "Loop") -> Align Vertical (to Decision X)
+      const downEdge = edges.find(e => e.source === node.id && (e.label === "False" || e.label === "Loop"));
+      if (downEdge) {
+        alignVertical(downEdge.target, decisionNode.x);
+      }
+    }
+  });
+
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
 
@@ -596,7 +698,7 @@ const getLayoutedElements = (nodes, edges) => {
       yOffset = 25;
     }
     if (node.type === 'decision') {
-      xOffset = 60;
+      xOffset = 70; // Adjusted for new width
       yOffset = 50;
     }
     if (node.type === 'loop') {
@@ -604,11 +706,12 @@ const getLayoutedElements = (nodes, edges) => {
       yOffset = 35;
     }
     if (node.type === 'process') {
+      // ... existing logic ...
       if (!node.data.label) {
-        xOffset = 5;
-        yOffset = 5;
+        xOffset = 10;
+        yOffset = 10;
       } else {
-        xOffset = 100;
+        xOffset = 110;
         yOffset = 30;
       }
     }

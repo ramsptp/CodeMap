@@ -49,7 +49,7 @@ class ReactFlowBuilder:
         })
         return nid
 
-    def add_edge(self, source, target, label=None, style=None):
+    def add_edge(self, source, target, label=None, style=None, sourceHandle=None):
         if source and target:
             edge_id = f"e{source}-{target}-{uuid.uuid4().hex[:4]}"
             
@@ -66,6 +66,8 @@ class ReactFlowBuilder:
                 "animated": True,
                 "style": edge_style,
             }
+            if sourceHandle:
+                edge["sourceHandle"] = sourceHandle
             if label:
                 edge["label"] = label
                 
@@ -429,11 +431,14 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                 b_entry, b_exit, b_term = self.process_block(body_stmts, new_context)
                 
                 if b_entry:
-                    self.add_edge(loop_node, b_entry, "Loop")
+                    self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
                     if b_exit and not b_term:
                         self.add_edge(b_exit, loop_node)
             
-            self.add_edge(loop_node, after, "Done")
+            # after = self.add_node("Done", "process") # OLD
+            after = self.add_node("", "process") # NEW: Invisible merge point
+            
+            self.add_edge(loop_node, after, "Done", sourceHandle="right")
             return loop_node, after, False
 
         # WHILE LOOP
@@ -442,7 +447,8 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
             header = header_match.group(0) if header_match else "While Loop"
             
             loop_node = self.add_node(header, "loop")
-            after = self.add_node("Done", "process")
+            # after = self.add_node("Done", "process") # OLD
+            after = self.add_node("", "process") # NEW: Invisible merge point
             
             new_context = {"continue": loop_node, "break": after}
             
@@ -454,11 +460,13 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                 b_entry, b_exit, b_term = self.process_block(body_stmts, new_context)
                 
                 if b_entry:
-                    self.add_edge(loop_node, b_entry, "Loop")
+                    # Loop Body -> Bottom (User request)
+                    self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
                     if b_exit and not b_term:
                         self.add_edge(b_exit, loop_node)
             
-            self.add_edge(loop_node, after, "Done")
+            # Done -> Right (User request)
+            self.add_edge(loop_node, after, "Done", sourceHandle="right")
             return loop_node, after, False
 
         # IF STATEMENT
@@ -539,7 +547,7 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                     t_entry, t_exit, t_term = self.process_block(t_stmts, loop_context)
 
             if t_entry:
-                self.add_edge(decision, t_entry, "True")
+                self.add_edge(decision, t_entry, "True", sourceHandle="right")
 
             # Process False Body
             f_entry = f_exit = f_term = None
@@ -558,7 +566,7 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                         f_entry, f_exit, f_term = self.process_block(f_stmts, loop_context)
             
             if f_entry:
-                self.add_edge(decision, f_entry, "False")
+                self.add_edge(decision, f_entry, "False", sourceHandle="bottom")
 
             if t_term and f_term:
                  return decision, None, True
@@ -566,10 +574,10 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
             merge = self.add_node("", "process") # Use process with empty label for dot rendering
             
             if t_exit and not t_term: self.add_edge(t_exit, merge)
-            elif not t_entry: self.add_edge(decision, merge, "True")
+            elif not t_entry: self.add_edge(decision, merge, "True", sourceHandle="right")
             
             if f_exit and not f_term: self.add_edge(f_exit, merge)
-            elif not f_entry: self.add_edge(decision, merge, "False")
+            elif not f_entry: self.add_edge(decision, merge, "False", sourceHandle="bottom")
             
             return decision, merge, False
 
