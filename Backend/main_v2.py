@@ -888,4 +888,99 @@ async def analyze_code(request: CodeRequest):
         logger.error(f"Analysis failed: {str(e)}")
         return {"error": str(e)}
 
+    # Generate insights from graph data
+    result["insights"] = generate_insights(result)
+    
     return result
+
+
+def generate_insights(result):
+    """Generate heuristic code insights from analysis result"""
+    insights = {
+        "total_nodes": 0,
+        "decision_count": 0,
+        "loop_count": 0,
+        "return_count": 0,
+        "summary": "",
+        "suggestions": []
+    }
+    
+    gd = result.get("graph_data")
+    if not gd:
+        return insights
+    
+    nodes = gd.get("nodes", [])
+    insights["total_nodes"] = len(nodes)
+    
+    for n in nodes:
+        ntype = n.get("type", "")
+        if ntype == "decision":
+            insights["decision_count"] += 1
+        elif ntype == "loop":
+            insights["loop_count"] += 1
+        elif ntype == "terminator":
+            # Exclude the "Start:" node
+            label = n.get("data", {}).get("label", "")
+            if not label.startswith("Start:"):
+                insights["return_count"] += 1
+    
+    # Build summary
+    parts = []
+    if insights["decision_count"]:
+        parts.append(f"{insights['decision_count']} branch{'es' if insights['decision_count'] != 1 else ''}")
+    if insights["loop_count"]:
+        parts.append(f"{insights['loop_count']} loop{'s' if insights['loop_count'] != 1 else ''}")
+    if insights["return_count"]:
+        parts.append(f"{insights['return_count']} return point{'s' if insights['return_count'] != 1 else ''}")
+    
+    if parts:
+        insights["summary"] = "This function has " + ", ".join(parts) + "."
+    else:
+        insights["summary"] = "This is a linear function with no branching."
+    
+    # Generate suggestions
+    complexity = result.get("complexity", {})
+    max_complexity = max(complexity.values()) if complexity else 0
+    
+    if max_complexity > 15:
+        insights["suggestions"].append({
+            "type": "warning",
+            "text": f"High complexity ({max_complexity}) — strongly consider refactoring into smaller functions."
+        })
+    elif max_complexity > 10:
+        insights["suggestions"].append({
+            "type": "warning",
+            "text": f"Moderate-high complexity ({max_complexity}) — consider splitting into smaller functions."
+        })
+    
+    if insights["return_count"] > 3:
+        insights["suggestions"].append({
+            "type": "info",
+            "text": f"Multiple return paths ({insights['return_count']}) — consider using early returns or a single exit point."
+        })
+    
+    if insights["decision_count"] > 4:
+        insights["suggestions"].append({
+            "type": "info",
+            "text": f"Many branches ({insights['decision_count']}) — consider a lookup table or strategy pattern."
+        })
+    
+    if insights["loop_count"] > 2:
+        insights["suggestions"].append({
+            "type": "info",
+            "text": f"Multiple loops ({insights['loop_count']}) — consider extracting loop bodies into helper functions."
+        })
+    
+    if insights["total_nodes"] > 20:
+        insights["suggestions"].append({
+            "type": "info", 
+            "text": "Large function — consider breaking it down for better readability and testability."
+        })
+    
+    if not insights["suggestions"]:
+        insights["suggestions"].append({
+            "type": "success",
+            "text": "This function looks clean and well-structured. ✨"
+        })
+    
+    return insights
