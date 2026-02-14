@@ -14,7 +14,7 @@ import JSZip from 'jszip';
 import {
   Folder, Code, GitBranch, Play, Settings,
   Columns, ClipboardList, Plus, ArrowLeft,
-  FileText, Layers, Trash2, FileCode, ChevronDown
+  FileText, Layers, Trash2, FileCode, ChevronDown, Edit3
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
 
@@ -167,9 +167,12 @@ const scanTreeDependencies = (tree, basePath = '') => {
 // ===========================================
 // 0. DATA & TEMPLATES
 // ===========================================
-const DEFAULT_TEMPLATES = {
-  python:
-    `def calculate_factorial(n):
+const DEFAULT_SNIPPETS = [
+  {
+    id: "default-python",
+    name: "Python Factorial",
+    language: "python",
+    content: `def calculate_factorial(n):
     if n < 0:
         return None
     elif n == 0:
@@ -178,10 +181,13 @@ const DEFAULT_TEMPLATES = {
         result = 1
         for i in range(1, n + 1):
             result *= i
-        return result`,
-
-  java:
-    `public class LogicDemo {
+        return result`
+  },
+  {
+    id: "default-java",
+    name: "Java Factorial",
+    language: "java",
+    content: `public class LogicDemo {
     public int factorial(int n) {
         if (n < 0) {
             return -1;
@@ -193,6 +199,20 @@ const DEFAULT_TEMPLATES = {
         return result;
     }
 }`
+  }
+];
+
+// Load snippets from localStorage or use defaults
+const loadSnippets = () => {
+  try {
+    const saved = localStorage.getItem('codemap-snippets');
+    if (saved) return JSON.parse(saved);
+  } catch (e) { /* ignore parse errors */ }
+  return DEFAULT_SNIPPETS;
+};
+
+const saveSnippets = (snippets) => {
+  localStorage.setItem('codemap-snippets', JSON.stringify(snippets));
 };
 
 // Hierarchical file tree structure
@@ -1259,14 +1279,27 @@ const NewApp = () => {
   const [sidebarView, setSidebarView] = useState("explorer");
   const [viewMode, setViewMode] = useState("split");
   const [currentFunc, setCurrentFunc] = useState(null);
-  const [language, setLanguage] = useState("python"); // Snippet Language Dropdown State
-
   // 1. FILE SYSTEM STATE (Explorer) - Now using tree structure
   const [fileTree, setFileTree] = useState(DEFAULT_FILE_TREE);
   const [selectedFilePath, setSelectedFilePath] = useState("src/main.py"); // Full path like 'src/main.py'
 
-  // 2. SNIPPET MEMORY STATE (Independent Buffers)
-  const [snippetMemory, setSnippetMemory] = useState(DEFAULT_TEMPLATES);
+  // 2. SNIPPET STATE (Universal Snippet Library)
+  const [snippets, setSnippets] = useState(loadSnippets);
+  const [activeSnippetId, setActiveSnippetId] = useState(() => {
+    const loaded = loadSnippets();
+    return loaded.length > 0 ? loaded[0].id : null;
+  });
+  const [renamingSnippetId, setRenamingSnippetId] = useState(null);
+
+  // Derived: active snippet object
+  const activeSnippet = useMemo(() => {
+    return snippets.find(s => s.id === activeSnippetId) || null;
+  }, [snippets, activeSnippetId]);
+
+  // Persist snippets to localStorage whenever they change
+  useEffect(() => {
+    saveSnippets(snippets);
+  }, [snippets]);
 
   // Backend State
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -1479,18 +1512,22 @@ const NewApp = () => {
         return updated;
       });
     } else {
-      // Update Snippet Memory (for the current language)
-      setSnippetMemory(prev => ({ ...prev, [language]: newContent }));
-      // Clear graph memory for this snippet
-      setGraphMemory(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(key => {
-          if (key.startsWith(`snippet-${language}:`)) {
-            delete updated[key];
-          }
+      // Update active snippet content
+      if (activeSnippetId) {
+        setSnippets(prev => prev.map(s =>
+          s.id === activeSnippetId ? { ...s, content: newContent } : s
+        ));
+        // Clear graph memory for this snippet
+        setGraphMemory(prev => {
+          const updated = { ...prev };
+          Object.keys(updated).forEach(key => {
+            if (key.startsWith(`snippet-${activeSnippetId}:`)) {
+              delete updated[key];
+            }
+          });
+          return updated;
         });
-        return updated;
-      });
+      }
     }
   };
 
@@ -1501,19 +1538,67 @@ const NewApp = () => {
         ? `${selectedFilePath}:${currentFunc}`
         : `${selectedFilePath}:overview`;
     } else {
+      const sid = activeSnippetId || 'none';
       return currentFunc
-        ? `snippet-${language}:${currentFunc}`
-        : `snippet-${language}:overview`;
+        ? `snippet-${sid}:${currentFunc}`
+        : `snippet-${sid}:overview`;
     }
   };
 
   // --- SNIPPET ACTIONS ---
+  const handleCreateSnippet = () => {
+    const newId = `snippet-${Date.now()}`;
+    const newSnippet = {
+      id: newId,
+      name: `Untitled ${snippets.length + 1}`,
+      language: "python",
+      content: `# New Snippet\n# Write your code here\n`
+    };
+    setSnippets(prev => [...prev, newSnippet]);
+    setActiveSnippetId(newId);
+  };
+
+  const handleDeleteSnippet = (id) => {
+    if (snippets.length <= 1) return; // Keep at least one
+    setSnippets(prev => {
+      const updated = prev.filter(s => s.id !== id);
+      if (activeSnippetId === id) {
+        setActiveSnippetId(updated[0]?.id || null);
+      }
+      return updated;
+    });
+  };
+
+  const handleRenameSnippet = (id, newName) => {
+    if (!newName.trim()) return;
+    setSnippets(prev => prev.map(s =>
+      s.id === id ? { ...s, name: newName.trim() } : s
+    ));
+    setRenamingSnippetId(null);
+  };
+
+  const handleChangeSnippetLanguage = (newLang) => {
+    if (!activeSnippetId) return;
+    setSnippets(prev => prev.map(s =>
+      s.id === activeSnippetId ? { ...s, language: newLang } : s
+    ));
+    // Clear graph memory since language changed
+    setGraphMemory(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(key => {
+        if (key.startsWith(`snippet-${activeSnippetId}:`)) {
+          delete updated[key];
+        }
+      });
+      return updated;
+    });
+  };
+
   // Overwrites the ACTIVE file with the CURRENT Snippet buffer
-  const handleLoadSnippet = (lang) => {
-    const contentToLoad = snippetMemory[lang];
-    if (window.confirm(`Overwrite '${activeFileName}' with your ${lang} snippet?`)) {
-      setFileTree(prev => setFileContent(prev, selectedFilePath, contentToLoad));
-      // Switch to explorer so they can see the file updated
+  const handleLoadSnippet = () => {
+    if (!activeSnippet) return;
+    if (window.confirm(`Overwrite '${activeFileName}' with snippet '${activeSnippet.name}'?`)) {
+      setFileTree(prev => setFileContent(prev, selectedFilePath, activeSnippet.content));
       setSidebarView("explorer");
     }
   };
@@ -1539,9 +1624,10 @@ const NewApp = () => {
       else if (activeFileName.endsWith(".c")) langToSend = "c";
 
     } else {
-      // Use explicit dropdown choice in Snippets mode
-      langToSend = language;
-      codeToSend = snippetMemory[language];
+      // Use active snippet's language and content
+      if (!activeSnippet) return;
+      langToSend = activeSnippet.language;
+      codeToSend = activeSnippet.content;
     }
 
     try {
@@ -1620,28 +1706,62 @@ const NewApp = () => {
         {/* VIEW B: SNIPPETS */}
         {sidebarView === "snippets" && (
           <>
-            <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase" }}>
+            <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               SNIPPETS
+              <button
+                onClick={handleCreateSnippet}
+                style={{ background: "none", border: "1px solid #4caf50", color: "#4caf50", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.75rem" }}
+                title="New Snippet"
+              >
+                <Plus size={12} /> New
+              </button>
             </div>
-            <div style={{ padding: "0 10px" }}>
-              <div style={{ fontSize: "0.8rem", color: "#888", marginBottom: "15px", fontStyle: "italic", borderBottom: "1px solid #333", paddingBottom: "10px" }}>
-                Select a template below to load into the snippet editor.
-              </div>
+            <div style={{ padding: "0 10px", overflowY: "auto", flex: 1 }}>
+              {snippets.map(snippet => (
+                <div
+                  key={snippet.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "6px",
+                    padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                    background: activeSnippetId === snippet.id ? "#2a2d2e" : "transparent",
+                    borderLeft: activeSnippetId === snippet.id ? "2px solid #4caf50" : "2px solid transparent",
+                    fontSize: "0.8rem", color: activeSnippetId === snippet.id ? "#fff" : "#aaa"
+                  }}
+                  onClick={() => setActiveSnippetId(snippet.id)}
+                >
+                  <FileCode size={14} color={activeSnippetId === snippet.id ? "#4caf50" : "#666"} />
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    {renamingSnippetId === snippet.id ? (
+                      <input
+                        autoFocus
+                        defaultValue={snippet.name}
+                        onBlur={(e) => handleRenameSnippet(snippet.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSnippet(snippet.id, e.target.value); if (e.key === 'Escape') setRenamingSnippetId(null); }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: "#1e1e1e", border: "1px solid #4caf50", color: "#fff", width: "100%", padding: "2px 4px", borderRadius: "3px", fontSize: "0.8rem", outline: "none" }}
+                      />
+                    ) : (
+                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{snippet.name}</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: "0.6rem", color: "#555", textTransform: "uppercase", flexShrink: 0 }}>{snippet.language}</span>
+                  <Edit3
+                    size={12} color="#666" style={{ cursor: "pointer", flexShrink: 0 }}
+                    onClick={(e) => { e.stopPropagation(); setRenamingSnippetId(snippet.id); }}
+                    title="Rename"
+                  />
+                  {snippets.length > 1 && (
+                    <Trash2
+                      size={12} color="#555" style={{ cursor: "pointer", flexShrink: 0 }}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteSnippet(snippet.id); }}
+                      title="Delete"
+                    />
+                  )}
+                </div>
+              ))}
 
-              {/* Buttons just switch the ACTIVE snippet view, they don't overwrite files immediately */}
-              <FileItem
-                name="Python Template"
-                active={language === "python"}
-                onClick={() => setLanguage("python")}
-              />
-              <FileItem
-                name="Java Template"
-                active={language === "java"}
-                onClick={() => setLanguage("java")}
-              />
-
-              <div style={{ marginTop: "20px" }}>
-                <button style={actionBtnStyle} onClick={() => handleLoadSnippet(language)}>
+              <div style={{ marginTop: "20px", borderTop: "1px solid #333", paddingTop: "10px" }}>
+                <button style={actionBtnStyle} onClick={handleLoadSnippet}>
                   Inject to {activeFileName}
                 </button>
               </div>
@@ -1661,7 +1781,7 @@ const NewApp = () => {
             {sidebarView === "explorer" ? (
               <span style={{ fontWeight: "bold", color: "#d4d4d4" }}>{activeFileName}</span>
             ) : (
-              <span style={{ fontWeight: "bold", color: "#f89820" }}>Snippet: {language.toUpperCase()}</span>
+              <span style={{ fontWeight: "bold", color: "#f89820" }}>Snippet: {activeSnippet ? activeSnippet.name : 'None'}</span>
             )}
 
             {currentFunc && (
@@ -1677,12 +1797,16 @@ const NewApp = () => {
             {/* CONDITIONAL LANGUAGE CONTROL */}
             {sidebarView === "snippets" ? (
               <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
+                value={activeSnippet ? activeSnippet.language : "python"}
+                onChange={(e) => handleChangeSnippetLanguage(e.target.value)}
                 style={dropdownStyle}
               >
                 <option value="python">Python</option>
                 <option value="java">Java</option>
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="cpp">C++</option>
+                <option value="c">C</option>
               </select>
             ) : (
               <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: "bold", background: "#252526", padding: "4px 8px", borderRadius: "3px" }}>
@@ -1725,7 +1849,7 @@ const NewApp = () => {
           {(viewMode === "code" || viewMode === "split") && (
             <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "1px solid #333", height: "100%" }}>
               <textarea
-                value={sidebarView === "explorer" ? currentFileContent : snippetMemory[language]}
+                value={sidebarView === "explorer" ? currentFileContent : (activeSnippet ? activeSnippet.content : '')}
                 onChange={handleCodeChange}
                 style={editorStyle} spellCheck="false"
               />
