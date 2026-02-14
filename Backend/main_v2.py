@@ -307,84 +307,146 @@ class JavaFlowBuilder(ReactFlowBuilder):
         """Build flowchart for Java method"""
         self.nodes, self.edges, self._id_counter = [], [], 0
         start = self.add_node(f"Start: {name}", "terminator")
-        last_node = start
         
         stmts = parse_java_structure(body_text)
+        entry, exit_node, _ = self._process_block(stmts)
         
+        if entry:
+            self.add_edge(start, entry)
+            
+        return self.get_data()
+
+    def _process_block(self, stmts):
+        """Process a list of statements, returning (entry, exit, terminal)"""
+        entry = None
+        last_exit = None
+        terminal = False
+
         for stmt in stmts:
-            # FOR LOOP
-            if stmt.startswith("for"):
-                header_match = re.search(r"for\s*\((.*?)\)", stmt)
-                header = header_match.group(0) if header_match else "For Loop"
+            s_entry, s_exit, s_term = self._process_stmt(stmt)
+            if not s_entry: continue
+            
+            if entry is None: entry = s_entry
+            if last_exit:
+                self.add_edge(last_exit, s_entry)
+            
+            last_exit = s_exit
+            if s_term:
+                terminal = True
+                break
                 
-                loop_node = self.add_node(header, "loop")
-                self.add_edge(last_node, loop_node)
-                
-                body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
-                body_content = body_match.group(1).strip() if body_match else "..."
-                
-                body_node = self.add_node(body_content, "process")
+        return entry, last_exit, terminal
+
+    def _process_stmt(self, stmt):
+        """Process a single statement, returns (entry, exit, terminal)"""
+
+        # FOR LOOP
+        if stmt.startswith("for"):
+            header_match = re.search(r"for\s*\((.*?)\)", stmt)
+            header = header_match.group(0) if header_match else "For Loop"
+            
+            loop_node = self.add_node(header, "loop")
+            
+            body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
+            body_content = body_match.group(1).strip() if body_match else ""
+            
+            if body_content:
+                body_stmts = parse_java_structure(body_content)
+                b_entry, b_exit, b_term = self._process_block(body_stmts)
                 if b_entry:
                     self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
                     if b_exit and not b_term:
                         self.add_edge(b_exit, loop_node, targetHandle="left")
-                
-                merge = self.add_node("", "process")  # Merge point
-                self.add_edge(loop_node, merge, "Done", sourceHandle="right")
-                last_node = merge
             
-            # WHILE LOOP
-            elif stmt.startswith("while"):
-                header_match = re.search(r"while\s*\((.*?)\)", stmt)
-                header = header_match.group(0) if header_match else "While Loop"
-                
-                loop_node = self.add_node(header, "loop")
-                self.add_edge(last_node, loop_node)
-                
-                body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
-                body_content = body_match.group(1).strip() if body_match else "..."
-                
-                body_node = self.add_node(body_content, "process")
-                self.add_edge(loop_node, body_node, "Loop", sourceHandle="bottom")
-                self.add_edge(body_node, loop_node, targetHandle="left")  # Loop back
-                
-                merge = self.add_node("", "process")  # Merge point
-                self.add_edge(loop_node, merge, "Done", sourceHandle="right")
-                last_node = merge
-
-            # IF STATEMENT
-            elif stmt.startswith("if"):
-                header_match = re.search(r"if\s*\((.*?)\)", stmt)
-                header = header_match.group(0) if header_match else "If"
-                
-                decision = self.add_node(header, "decision")
-                self.add_edge(last_node, decision)
-                
-                body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
-                body_content = body_match.group(1).strip() if body_match else "..."
-                
-                true_node = self.add_node(body_content, "process")
-                self.add_edge(decision, true_node, "True", sourceHandle="right")
-                
-                merge = self.add_node("", "process")  # Merge point
-                self.add_edge(true_node, merge)
-                self.add_edge(decision, merge, "False", sourceHandle="bottom")
-                last_node = merge
-
-            # RETURN STATEMENT
-            elif stmt.startswith("return"):
-                node = self.add_node(stmt, "terminator")
-                self.add_edge(last_node, node)
-                last_node = None  # Terminal
+            after = self.add_node("Done", "process")
+            self.add_edge(loop_node, after, "Done", sourceHandle="right")
+            return loop_node, after, False
+        
+        # WHILE LOOP
+        elif stmt.startswith("while"):
+            header_match = re.search(r"while\s*\((.*?)\)", stmt)
+            header = header_match.group(0) if header_match else "While Loop"
             
-            # REGULAR STATEMENT
-            else:
-                node = self.add_node(stmt, "process")
-                if last_node: 
-                    self.add_edge(last_node, node)
-                last_node = node
-                
-        return self.get_data()
+            loop_node = self.add_node(header, "loop")
+            
+            body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
+            body_content = body_match.group(1).strip() if body_match else ""
+            
+            if body_content:
+                body_stmts = parse_java_structure(body_content)
+                b_entry, b_exit, b_term = self._process_block(body_stmts)
+                if b_entry:
+                    self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
+                    if b_exit and not b_term:
+                        self.add_edge(b_exit, loop_node, targetHandle="left")
+
+            after = self.add_node("Done", "process")
+            self.add_edge(loop_node, after, "Done", sourceHandle="right")
+            return loop_node, after, False
+
+        # IF STATEMENT
+        elif stmt.startswith("if"):
+            header_match = re.search(r"if\s*\((.*?)\)", stmt)
+            header = header_match.group(0) if header_match else "If"
+            
+            decision = self.add_node(header, "decision")
+            
+            # Parse true body
+            body_match = re.search(r"\{(.*)\}", stmt, re.DOTALL)
+            true_content = body_match.group(1).strip() if body_match else ""
+            
+            t_entry = t_exit = None
+            t_term = False
+            if true_content:
+                t_stmts = parse_java_structure(true_content)
+                t_entry, t_exit, t_term = self._process_block(t_stmts)
+            
+            if t_entry:
+                self.add_edge(decision, t_entry, "True", sourceHandle="right")
+            
+            # Check for else
+            # Find else part after the if body (simple approach)
+            f_entry = f_exit = None
+            f_term = False
+            else_match = re.search(r"\}\s*else\s*\{(.*)\}", stmt, re.DOTALL)
+            if else_match:
+                else_content = else_match.group(1).strip()
+                if else_content:
+                    f_stmts = parse_java_structure(else_content)
+                    f_entry, f_exit, f_term = self._process_block(f_stmts)
+            
+            if f_entry:
+                self.add_edge(decision, f_entry, "False", sourceHandle="bottom")
+            
+            # Both terminal — no merge needed
+            if t_term and f_term:
+                return decision, None, True
+            
+            # Create merge point
+            merge = self.add_node("", "process")
+            
+            if t_exit and not t_term: self.add_edge(t_exit, merge)
+            elif not t_entry: self.add_edge(decision, merge, "True", sourceHandle="right")
+            
+            if f_exit and not f_term: self.add_edge(f_exit, merge)
+            elif not f_entry: self.add_edge(decision, merge, "False", sourceHandle="bottom")
+            
+            return decision, merge, False
+
+        # RETURN STATEMENT
+        elif stmt.startswith("return"):
+            label = stmt.replace("return", "").strip().replace(";", "")
+            if not label: label = "Return"
+            else: label = f"Return {label}"
+            node = self.add_node(label, "terminator")
+            return node, node, True
+        
+        # REGULAR STATEMENT
+        else:
+            label = stmt.strip()
+            if len(label) > 40: label = label[:37] + "..."
+            node = self.add_node(label, "process")
+            return node, node, False
 
 # ==========================================
 # 5. JAVASCRIPT / TYPESCRIPT PARSER

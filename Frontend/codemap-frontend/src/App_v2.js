@@ -1301,6 +1301,14 @@ const NewApp = () => {
     saveSnippets(snippets);
   }, [snippets]);
 
+  // Clear analysis when switching snippets (prevent stale graph)
+  useEffect(() => {
+    if (sidebarView === "snippets") {
+      setAnalysisResult(null);
+      setCurrentFunc(null);
+    }
+  }, [activeSnippetId]);
+
   // Backend State
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1605,8 +1613,6 @@ const NewApp = () => {
 
   // --- ANALYSIS ---
   const handleAnalyze = async (specificFunction = null) => {
-    setLoading(true);
-
     // 1. Determine Language Logic
     let codeToSend = "";
     let langToSend = "python";
@@ -1629,6 +1635,8 @@ const NewApp = () => {
       langToSend = activeSnippet.language;
       codeToSend = activeSnippet.content;
     }
+
+    setLoading(true);
 
     try {
       const payload = {
