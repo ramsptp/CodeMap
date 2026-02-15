@@ -1691,14 +1691,6 @@ const NewApp = () => {
           <ClipboardList size={24} color={sidebarView === "snippets" ? "#fff" : "#777"} />
         </div>
 
-        <div
-          onClick={() => setSidebarView("inspector")}
-          style={{ cursor: "pointer", borderLeft: sidebarView === "inspector" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
-          title="Inspector Hub"
-        >
-          <Search size={24} color={sidebarView === "inspector" ? "#fff" : "#777"} />
-        </div>
-
         <GitBranch size={24} color="#555" style={{ cursor: "not-allowed" }} />
         <Settings size={24} color="#777" style={{ marginTop: "auto", cursor: "pointer" }} />
       </div>
@@ -1784,142 +1776,6 @@ const NewApp = () => {
               </div>
             </div>
           </>
-        )}
-
-        {/* VIEW C: INSPECTOR */}
-        {sidebarView === "inspector" && (
-          <div style={{ padding: "0", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Search size={14} color="#4caf50" /> INSPECTOR
-            </div>
-
-            {!analysisResult ? (
-              <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
-                Analyze code to see insights here.
-              </div>
-            ) : (
-              <>
-                {/* Section 1: Function List */}
-                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-                  <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
-                  {(analysisResult?.functions?.names || []).length === 0 ? (
-                    <div style={{ fontSize: "0.75rem", color: "#555", fontStyle: "italic" }}>No functions detected</div>
-                  ) : (
-                    analysisResult.functions.names.map(fname => {
-                      const cx = analysisResult.complexity?.[fname] || 0;
-                      const badgeColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
-                      const isActive = currentFunc === fname;
-                      return (
-                        <div
-                          key={fname}
-                          onClick={() => handleAnalyze(fname)}
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                            background: isActive ? "#2a2d2e" : "transparent",
-                            borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
-                            fontSize: "0.8rem", color: isActive ? "#fff" : "#bbb",
-                            transition: "background 0.15s"
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "#2a2d2e"}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
-                            <Code size={12} color={badgeColor} />
-                            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fname}()</span>
-                          </div>
-                          <span style={{
-                            background: badgeColor + "22", color: badgeColor, fontSize: "0.65rem",
-                            padding: "2px 6px", borderRadius: "10px", fontWeight: "bold", flexShrink: 0
-                          }}>
-                            {cx}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Section 2: Complexity Gauge */}
-                {currentFunc && analysisResult?.complexity?.[currentFunc] != null && (
-                  <div style={{ padding: "12px", borderBottom: "1px solid #333" }}>
-                    <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Complexity</div>
-                    {(() => {
-                      const cx = analysisResult.complexity[currentFunc];
-                      const pct = Math.min(cx / 20 * 100, 100);
-                      const barColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
-                      const label = cx <= 5 ? "Simple" : cx <= 10 ? "Moderate" : cx <= 15 ? "Complex" : "Very Complex";
-                      return (
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                            <span style={{ fontSize: "0.75rem", color: "#ccc" }}>{currentFunc}()</span>
-                            <span style={{ fontSize: "0.75rem", color: barColor, fontWeight: "bold" }}>{cx} — {label}</span>
-                          </div>
-                          <div style={{ background: "#1e1e1e", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
-                            <div style={{
-                              width: `${pct}%`, height: "100%", borderRadius: "4px",
-                              background: `linear-gradient(90deg, #4caf50, ${barColor})`,
-                              transition: "width 0.6s ease, background 0.6s ease",
-                              boxShadow: `0 0 8px ${barColor}44`
-                            }} />
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {/* Section 3: Insights */}
-                {analysisResult?.insights && (
-                  <div style={{ padding: "12px" }}>
-                    <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Insights</div>
-
-                    {/* Summary */}
-                    <div style={{
-                      background: "#1e1e1e", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px",
-                      fontSize: "0.78rem", color: "#ccc", lineHeight: "1.5",
-                      borderLeft: "3px solid #4caf50"
-                    }}>
-                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
-                        {analysisResult.insights.decision_count > 0 && (
-                          <span style={{ background: "#ff980022", color: "#ff9800", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
-                            🔀 {analysisResult.insights.decision_count} branch{analysisResult.insights.decision_count !== 1 ? "es" : ""}
-                          </span>
-                        )}
-                        {analysisResult.insights.loop_count > 0 && (
-                          <span style={{ background: "#00bcd422", color: "#00bcd4", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
-                            🔁 {analysisResult.insights.loop_count} loop{analysisResult.insights.loop_count !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {analysisResult.insights.return_count > 0 && (
-                          <span style={{ background: "#f4433622", color: "#f44336", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
-                            ↩ {analysisResult.insights.return_count} return{analysisResult.insights.return_count !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-                      {analysisResult.insights.summary}
-                    </div>
-
-                    {/* Suggestions */}
-                    {analysisResult.insights.suggestions?.map((s, i) => {
-                      const icon = s.type === "warning" ? <AlertTriangle size={13} color="#ff9800" /> : s.type === "success" ? <CheckCircle size={13} color="#4caf50" /> : <Info size={13} color="#64b5f6" />;
-                      const borderColor = s.type === "warning" ? "#ff9800" : s.type === "success" ? "#4caf50" : "#64b5f6";
-                      return (
-                        <div key={i} style={{
-                          display: "flex", alignItems: "flex-start", gap: "8px",
-                          background: "#1e1e1e", borderRadius: "6px", padding: "8px 10px", marginBottom: "6px",
-                          borderLeft: `3px solid ${borderColor}`, fontSize: "0.75rem", color: "#aaa", lineHeight: "1.4"
-                        }}>
-                          <div style={{ flexShrink: 0, marginTop: "1px" }}>{icon}</div>
-                          <span>{s.text}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
         )}
       </div>
 
@@ -2048,31 +1904,134 @@ const NewApp = () => {
         </div>
       </div>
 
-      {/* 4. INSPECTOR */}
-      <div style={{ width: "250px", background: "#252526", borderLeft: "1px solid #1e1e1e", padding: "15px" }}>
-        <div style={{ fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", marginBottom: "15px" }}>Functions</div>
-        {analysisResult?.functions?.names?.map(fn => (
-          <div
-            key={fn}
-            onClick={() => handleAnalyze(fn)}
-            style={{
-              padding: "8px", borderBottom: "1px solid #333", fontSize: "0.85rem",
-              cursor: "pointer", color: currentFunc === fn ? "#4caf50" : "#ccc",
-              background: currentFunc === fn ? "#333" : "transparent"
-            }}
-          >
-            <Code size={12} style={{ marginRight: 8, display: "inline" }} />
-            {fn}()
-          </div>
-        ))}
-        <div style={{ marginTop: "20px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", marginBottom: "5px" }}>Complexity</div>
-        <div style={{ background: "#333", borderRadius: "5px", padding: "15px" }}>
-          <div style={{ fontSize: "2.5rem", fontWeight: "300", color: "#4caf50" }}>
-            {currentFunc && analysisResult?.complexity
-              ? analysisResult.complexity[currentFunc]
-              : "-"}
-          </div>
+      {/* 4. RIGHT PANEL — INSPECTOR */}
+      <div style={{ width: "260px", background: "#252526", borderLeft: "1px solid #1e1e1e", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
+          <Search size={14} color="#4caf50" /> Inspector
         </div>
+
+        {!analysisResult ? (
+          <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+            Analyze code to see insights here.
+          </div>
+        ) : (
+          <>
+            {/* Function List */}
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+              <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
+              {(analysisResult?.functions?.names || []).length === 0 ? (
+                <div style={{ fontSize: "0.75rem", color: "#555", fontStyle: "italic" }}>No functions detected</div>
+              ) : (
+                analysisResult.functions.names.map(fname => {
+                  const cx = analysisResult.complexity?.[fname] || 0;
+                  const badgeColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
+                  const isActive = currentFunc === fname;
+                  return (
+                    <div
+                      key={fname}
+                      onClick={() => handleAnalyze(fname)}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                        background: isActive ? "#2a2d2e" : "transparent",
+                        borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
+                        fontSize: "0.8rem", color: isActive ? "#fff" : "#bbb",
+                        transition: "background 0.15s"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#2a2d2e"}
+                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
+                        <Code size={12} color={badgeColor} />
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fname}()</span>
+                      </div>
+                      <span style={{
+                        background: badgeColor + "22", color: badgeColor, fontSize: "0.65rem",
+                        padding: "2px 6px", borderRadius: "10px", fontWeight: "bold", flexShrink: 0
+                      }}>
+                        {cx}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Complexity Gauge */}
+            {currentFunc && analysisResult?.complexity?.[currentFunc] != null && (
+              <div style={{ padding: "12px", borderBottom: "1px solid #333" }}>
+                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Complexity</div>
+                {(() => {
+                  const cx = analysisResult.complexity[currentFunc];
+                  const pct = Math.min(cx / 20 * 100, 100);
+                  const barColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
+                  const label = cx <= 5 ? "Simple" : cx <= 10 ? "Moderate" : cx <= 15 ? "Complex" : "Very Complex";
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                        <span style={{ fontSize: "0.75rem", color: "#ccc" }}>{currentFunc}()</span>
+                        <span style={{ fontSize: "0.75rem", color: barColor, fontWeight: "bold" }}>{cx} — {label}</span>
+                      </div>
+                      <div style={{ background: "#1e1e1e", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
+                        <div style={{
+                          width: `${pct}%`, height: "100%", borderRadius: "4px",
+                          background: `linear-gradient(90deg, #4caf50, ${barColor})`,
+                          transition: "width 0.6s ease, background 0.6s ease",
+                          boxShadow: `0 0 8px ${barColor}44`
+                        }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Insights */}
+            {analysisResult?.insights && (
+              <div style={{ padding: "12px" }}>
+                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Insights</div>
+                <div style={{
+                  background: "#1e1e1e", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px",
+                  fontSize: "0.78rem", color: "#ccc", lineHeight: "1.5",
+                  borderLeft: "3px solid #4caf50"
+                }}>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
+                    {analysisResult.insights.decision_count > 0 && (
+                      <span style={{ background: "#ff980022", color: "#ff9800", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
+                        🔀 {analysisResult.insights.decision_count} branch{analysisResult.insights.decision_count !== 1 ? "es" : ""}
+                      </span>
+                    )}
+                    {analysisResult.insights.loop_count > 0 && (
+                      <span style={{ background: "#00bcd422", color: "#00bcd4", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
+                        🔁 {analysisResult.insights.loop_count} loop{analysisResult.insights.loop_count !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {analysisResult.insights.return_count > 0 && (
+                      <span style={{ background: "#f4433622", color: "#f44336", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
+                        ↩ {analysisResult.insights.return_count} return{analysisResult.insights.return_count !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  {analysisResult.insights.summary}
+                </div>
+                {analysisResult.insights.suggestions?.map((s, i) => {
+                  const icon = s.type === "warning" ? <AlertTriangle size={13} color="#ff9800" /> : s.type === "success" ? <CheckCircle size={13} color="#4caf50" /> : <Info size={13} color="#64b5f6" />;
+                  const borderColor = s.type === "warning" ? "#ff9800" : s.type === "success" ? "#4caf50" : "#64b5f6";
+                  return (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "flex-start", gap: "8px",
+                      background: "#1e1e1e", borderRadius: "6px", padding: "8px 10px", marginBottom: "6px",
+                      borderLeft: `3px solid ${borderColor}`, fontSize: "0.75rem", color: "#aaa", lineHeight: "1.4"
+                    }}>
+                      <div style={{ flexShrink: 0, marginTop: "1px" }}>{icon}</div>
+                      <span>{s.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
