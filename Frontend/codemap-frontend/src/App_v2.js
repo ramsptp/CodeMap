@@ -15,9 +15,11 @@ import {
   Folder, Code, GitBranch, Play, Settings,
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
-  Search, AlertTriangle, CheckCircle, Info, Zap
+  Search, AlertTriangle, CheckCircle, Info, Zap, Github, Loader
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
+import GitHubExplorer from './components/GitHubExplorer';
+import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent } from './utils/githubApi';
 
 // ===========================================
 // DEPENDENCY SCANNER
@@ -1314,7 +1316,57 @@ const NewApp = () => {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // 3. GRAPH LAYOUT MEMORY STATE
+  // 3. GITHUB STATE
+  const [repoInput, setRepoInput] = useState('');
+  const [githubTree, setGithubTree] = useState(null);
+  const [githubRepoInfo, setGithubRepoInfo] = useState(null); // { owner, repo, branch }
+  const [githubFileContent, setGithubFileContent] = useState('');
+  const [githubSelectedFile, setGithubSelectedFile] = useState(null);
+  const [githubLoadingRepo, setGithubLoadingRepo] = useState(false);
+  const [githubLoadingFile, setGithubLoadingFile] = useState(null);
+  const [githubError, setGithubError] = useState(null);
+
+  // Load GitHub repo
+  const handleLoadRepo = async () => {
+    const parsed = parseRepoInput(repoInput);
+    if (!parsed) { setGithubError('Invalid format. Use owner/repo or a GitHub URL.'); return; }
+    setGithubLoadingRepo(true);
+    setGithubError(null);
+    setGithubTree(null);
+    setGithubSelectedFile(null);
+    setGithubFileContent('');
+    setAnalysisResult(null);
+    setCurrentFunc(null);
+    try {
+      const branch = await fetchDefaultBranch(parsed.owner, parsed.repo);
+      const tree = await fetchRepoTree(parsed.owner, parsed.repo, branch);
+      setGithubRepoInfo({ ...parsed, branch });
+      setGithubTree(tree);
+    } catch (err) {
+      setGithubError(err.message);
+    } finally {
+      setGithubLoadingRepo(false);
+    }
+  };
+
+  // Handle GitHub file selection
+  const handleGithubFileSelect = async (filePath, node) => {
+    if (!githubRepoInfo || !node?._ghPath) return;
+    setGithubSelectedFile(filePath);
+    setGithubLoadingFile(filePath);
+    setAnalysisResult(null);
+    setCurrentFunc(null);
+    try {
+      const content = await fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, node._ghPath);
+      setGithubFileContent(content);
+      setGithubLoadingFile(null);
+    } catch (err) {
+      setGithubFileContent(`// Error loading file: ${err.message}`);
+      setGithubLoadingFile(null);
+    }
+  };
+
+  // 4. GRAPH LAYOUT MEMORY STATE
   const [graphMemory, setGraphMemory] = useState({});
 
   // 4. DEPENDENCY TRACKING STATE
@@ -1630,6 +1682,17 @@ const NewApp = () => {
       else if (activeFileName.endsWith(".cpp") || activeFileName.endsWith(".cc")) langToSend = "cpp";
       else if (activeFileName.endsWith(".c")) langToSend = "c";
 
+    } else if (sidebarView === "github") {
+      if (!githubFileContent || !githubSelectedFile) return;
+      codeToSend = githubFileContent;
+      const fn = githubSelectedFile.split('/').pop() || '';
+      if (fn.endsWith('.py')) langToSend = 'python';
+      else if (fn.endsWith('.java')) langToSend = 'java';
+      else if (fn.endsWith('.js') || fn.endsWith('.jsx')) langToSend = 'javascript';
+      else if (fn.endsWith('.ts') || fn.endsWith('.tsx')) langToSend = 'typescript';
+      else if (fn.endsWith('.cpp') || fn.endsWith('.cc')) langToSend = 'cpp';
+      else if (fn.endsWith('.c')) langToSend = 'c';
+
     } else {
       // Use active snippet's language and content
       if (!activeSnippet) return;
@@ -1691,7 +1754,14 @@ const NewApp = () => {
           <ClipboardList size={24} color={sidebarView === "snippets" ? "#fff" : "#777"} />
         </div>
 
-        <GitBranch size={24} color="#555" style={{ cursor: "not-allowed" }} />
+        <div
+          onClick={() => setSidebarView("github")}
+          style={{ cursor: "pointer", borderLeft: sidebarView === "github" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
+          title="GitHub Explorer"
+        >
+          <Github size={24} color={sidebarView === "github" ? "#fff" : "#777"} />
+        </div>
+
         <Settings size={24} color="#777" style={{ marginTop: "auto", cursor: "pointer" }} />
       </div>
 
@@ -1777,6 +1847,65 @@ const NewApp = () => {
             </div>
           </>
         )}
+
+        {/* VIEW C: GITHUB */}
+        {sidebarView === "github" && (
+          <>
+            <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
+              <Github size={14} color="#fff" /> GitHub
+            </div>
+
+            {/* Repo Input */}
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type="text"
+                  value={repoInput}
+                  onChange={(e) => setRepoInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleLoadRepo(); }}
+                  placeholder="owner/repo"
+                  style={{
+                    flex: 1, background: "#1e1e1e", border: "1px solid #444", borderRadius: "4px",
+                    padding: "6px 10px", color: "#d4d4d4", fontSize: "0.8rem", outline: "none"
+                  }}
+                />
+                <button
+                  onClick={handleLoadRepo}
+                  disabled={githubLoadingRepo || !repoInput.trim()}
+                  style={{
+                    background: githubLoadingRepo ? "#333" : "#238636", border: "none", borderRadius: "4px",
+                    padding: "6px 12px", color: "#fff", fontSize: "0.75rem", cursor: githubLoadingRepo ? "wait" : "pointer",
+                    display: "flex", alignItems: "center", gap: "4px"
+                  }}
+                >
+                  {githubLoadingRepo ? <Loader size={12} className="spin" /> : <Play size={12} />}
+                  {githubLoadingRepo ? 'Loading' : 'Load'}
+                </button>
+              </div>
+
+              {githubError && (
+                <div style={{ marginTop: "8px", padding: "6px 8px", background: "#3b1d1d", border: "1px solid #6b3030", borderRadius: "4px", fontSize: "0.75rem", color: "#f87171" }}>
+                  {githubError}
+                </div>
+              )}
+
+              {githubRepoInfo && (
+                <div style={{ marginTop: "8px", fontSize: "0.7rem", color: "#666", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <GitBranch size={10} /> {githubRepoInfo.branch}
+                </div>
+              )}
+            </div>
+
+            {/* Remote Tree */}
+            <GitHubExplorer
+              treeData={githubTree}
+              selectedFile={githubSelectedFile}
+              onFileSelect={handleGithubFileSelect}
+              loadingFile={githubLoadingFile}
+              repoInfo={githubRepoInfo}
+            />
+          </>
+        )}
       </div>
 
       {/* 3. CENTER STAGE */}
@@ -1789,6 +1918,10 @@ const NewApp = () => {
             <FileCode size={14} color="#4caf50" />
             {sidebarView === "explorer" ? (
               <span style={{ fontWeight: "bold", color: "#d4d4d4" }}>{activeFileName}</span>
+            ) : sidebarView === "github" ? (
+              <span style={{ fontWeight: "bold", color: "#c9d1d9" }}>
+                {githubSelectedFile ? githubSelectedFile.split('/').pop() : (githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : 'GitHub')}
+              </span>
             ) : (
               <span style={{ fontWeight: "bold", color: "#f89820" }}>Snippet: {activeSnippet ? activeSnippet.name : 'None'}</span>
             )}
@@ -1858,9 +1991,10 @@ const NewApp = () => {
           {(viewMode === "code" || viewMode === "split") && (
             <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "1px solid #333", height: "100%" }}>
               <textarea
-                value={sidebarView === "explorer" ? currentFileContent : (activeSnippet ? activeSnippet.content : '')}
-                onChange={handleCodeChange}
-                style={editorStyle} spellCheck="false"
+                value={sidebarView === "explorer" ? currentFileContent : sidebarView === "github" ? githubFileContent : (activeSnippet ? activeSnippet.content : '')}
+                onChange={sidebarView === "github" ? undefined : handleCodeChange}
+                readOnly={sidebarView === "github"}
+                style={{ ...editorStyle, ...(sidebarView === "github" ? { opacity: 0.85 } : {}) }} spellCheck="false"
               />
             </div>
           )}

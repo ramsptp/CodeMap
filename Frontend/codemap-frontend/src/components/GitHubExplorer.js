@@ -1,0 +1,189 @@
+import React, { useState } from 'react';
+import {
+    Folder, FolderOpen, FileText, FileCode,
+    ChevronRight, ChevronDown
+} from 'lucide-react';
+
+// ============================================
+// FILE ICON HELPER
+// ============================================
+const getFileIcon = (filename) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        case 'py': return <FileCode size={14} color="#3572A5" />;
+        case 'java': return <FileCode size={14} color="#b07219" />;
+        case 'js': case 'jsx': return <FileCode size={14} color="#f1e05a" />;
+        case 'ts': case 'tsx': return <FileCode size={14} color="#3178c6" />;
+        case 'cpp': case 'cc': case 'c': case 'h': return <FileCode size={14} color="#f34b7d" />;
+        case 'go': return <FileCode size={14} color="#00ADD8" />;
+        case 'rs': return <FileCode size={14} color="#dea584" />;
+        case 'json': return <FileCode size={14} color="#cb8c00" />;
+        case 'md': return <FileText size={14} color="#083fa1" />;
+        default: return <FileText size={14} color="#888" />;
+    }
+};
+
+// ============================================
+// TREE NODE (Read-Only)
+// ============================================
+const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, selectedFile, onFileSelect, loadingFile }) => {
+    const isFolder = node.type === 'folder';
+    const fullPath = path.join('/');
+    const isExpanded = expandedFolders.has(fullPath);
+    const isSelected = selectedFile === fullPath;
+    const isLoading = loadingFile === fullPath;
+
+    const handleClick = (e) => {
+        e.stopPropagation();
+        if (isFolder) {
+            toggleFolder(fullPath);
+        } else {
+            onFileSelect(fullPath, node);
+        }
+    };
+
+    return (
+        <div>
+            <div
+                onClick={handleClick}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    padding: '3px 8px', paddingLeft: `${depth * 16 + 8}px`,
+                    cursor: 'pointer', fontSize: '0.82rem',
+                    color: isSelected ? '#fff' : '#bbb',
+                    background: isSelected ? '#37373d' : 'transparent',
+                    borderLeft: isSelected ? '2px solid #4caf50' : '2px solid transparent',
+                    transition: 'background 0.1s'
+                }}
+                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#2a2d2e'; }}
+                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+            >
+                {isFolder ? (
+                    <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        {isExpanded ? <ChevronDown size={14} color="#888" /> : <ChevronRight size={14} color="#888" />}
+                    </span>
+                ) : (
+                    <span style={{ width: 14, flexShrink: 0 }} />
+                )}
+
+                <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    {isFolder ? (
+                        isExpanded ? <FolderOpen size={14} color="#dcb67a" /> : <Folder size={14} color="#dcb67a" />
+                    ) : (
+                        getFileIcon(node.name)
+                    )}
+                </span>
+
+                <span style={{
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    opacity: isLoading ? 0.5 : 1
+                }}>
+                    {node.name}
+                </span>
+
+                {isLoading && (
+                    <span style={{ fontSize: '0.65rem', color: '#4caf50', marginLeft: 'auto', flexShrink: 0 }}>
+                        loading…
+                    </span>
+                )}
+
+                {!isFolder && node._ghSize != null && (
+                    <span style={{ fontSize: '0.6rem', color: '#555', marginLeft: 'auto', flexShrink: 0 }}>
+                        {node._ghSize > 1024 ? `${(node._ghSize / 1024).toFixed(1)}KB` : `${node._ghSize}B`}
+                    </span>
+                )}
+            </div>
+
+            {isFolder && isExpanded && node.children && (
+                <div>
+                    {Object.entries(node.children)
+                        .sort(([, a], [, b]) => {
+                            if (a.type === 'folder' && b.type !== 'folder') return -1;
+                            if (a.type !== 'folder' && b.type === 'folder') return 1;
+                            return a.name.localeCompare(b.name);
+                        })
+                        .map(([name, childNode]) => (
+                            <RemoteTreeNode
+                                key={name}
+                                node={childNode}
+                                path={[...path, name]}
+                                depth={depth + 1}
+                                expandedFolders={expandedFolders}
+                                toggleFolder={toggleFolder}
+                                selectedFile={selectedFile}
+                                onFileSelect={onFileSelect}
+                                loadingFile={loadingFile}
+                            />
+                        ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
+const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, repoInfo }) => {
+    const [expandedFolders, setExpandedFolders] = useState(new Set(['']));
+
+    const toggleFolder = (path) => {
+        setExpandedFolders(prev => {
+            const s = new Set(prev);
+            if (s.has(path)) s.delete(path);
+            else s.add(path);
+            return s;
+        });
+    };
+
+    if (!treeData) {
+        return (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#555', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                Enter a repository above to browse.
+            </div>
+        );
+    }
+
+    const fileCount = countFiles(treeData);
+
+    return (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+            {repoInfo && (
+                <div style={{
+                    padding: '6px 12px', fontSize: '0.7rem', color: '#666',
+                    borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between'
+                }}>
+                    <span>{repoInfo.owner}/{repoInfo.repo}</span>
+                    <span>{fileCount} files</span>
+                </div>
+            )}
+            {treeData.children && Object.entries(treeData.children)
+                .sort(([, a], [, b]) => {
+                    if (a.type === 'folder' && b.type !== 'folder') return -1;
+                    if (a.type !== 'folder' && b.type === 'folder') return 1;
+                    return a.name.localeCompare(b.name);
+                })
+                .map(([name, node]) => (
+                    <RemoteTreeNode
+                        key={name}
+                        node={node}
+                        path={[name]}
+                        depth={0}
+                        expandedFolders={expandedFolders}
+                        toggleFolder={toggleFolder}
+                        selectedFile={selectedFile}
+                        onFileSelect={onFileSelect}
+                        loadingFile={loadingFile}
+                    />
+                ))}
+        </div>
+    );
+};
+
+function countFiles(node) {
+    if (node.type === 'file') return 1;
+    if (!node.children) return 0;
+    return Object.values(node.children).reduce((sum, child) => sum + countFiles(child), 0);
+}
+
+export default GitHubExplorer;
