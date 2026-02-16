@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import axios from "axios";
 import ReactFlow, {
   Background,
@@ -1282,6 +1282,53 @@ const NewApp = () => {
   const [sidebarView, setSidebarView] = useState("explorer");
   const [viewMode, setViewMode] = useState("split");
   const [currentFunc, setCurrentFunc] = useState(null);
+
+  // Panel widths (resizable)
+  const [sidebarWidth, setSidebarWidth] = useState(250);
+  const [codePaneWidth, setCodePaneWidth] = useState(40); // percentage
+  const [rightPanelWidth, setRightPanelWidth] = useState(260);
+  const containerRef = useRef(null);
+  const dragRef = useRef(null); // { type, startX, startValue }
+
+  // Drag handler
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!dragRef.current) return;
+      e.preventDefault();
+      const { type, startX, startValue } = dragRef.current;
+      const delta = e.clientX - startX;
+
+      if (type === 'sidebar') {
+        setSidebarWidth(Math.max(150, Math.min(500, startValue + delta)));
+      } else if (type === 'codepane') {
+        const container = containerRef.current;
+        if (!container) return;
+        const totalWidth = container.getBoundingClientRect().width;
+        const newPct = startValue + (delta / totalWidth) * 100;
+        setCodePaneWidth(Math.max(20, Math.min(80, newPct)));
+      } else if (type === 'rightpanel') {
+        setRightPanelWidth(Math.max(180, Math.min(500, startValue - delta)));
+      }
+    };
+    const handleMouseUp = () => {
+      dragRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
+  const startDrag = (type, startValue) => (e) => {
+    e.preventDefault();
+    dragRef.current = { type, startX: e.clientX, startValue };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
   // 1. FILE SYSTEM STATE (Explorer) - Now using tree structure
   const [fileTree, setFileTree] = useState(DEFAULT_FILE_TREE);
   const [selectedFilePath, setSelectedFilePath] = useState("src/main.py"); // Full path like 'src/main.py'
@@ -1756,7 +1803,7 @@ const NewApp = () => {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontFamily: "Segoe UI, sans-serif" }}>
+    <div ref={containerRef} style={{ display: "flex", height: "100vh", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontFamily: "Segoe UI, sans-serif" }}>
 
       {/* 1. ACTIVITY BAR */}
       <div style={{ width: "50px", background: "#333", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: "25px" }}>
@@ -1789,7 +1836,7 @@ const NewApp = () => {
       </div>
 
       {/* 2. SIDEBAR CONTENT */}
-      <div style={{ width: "250px", background: "#252526", display: "flex", flexDirection: "column", borderRight: "1px solid #1e1e1e" }}>
+      <div style={{ width: `${sidebarWidth}px`, background: "#252526", display: "flex", flexDirection: "column", borderRight: "none", flexShrink: 0 }}>
 
         {/* VIEW A: EXPLORER - Now using FileExplorer component */}
         {sidebarView === "explorer" && (
@@ -1932,6 +1979,20 @@ const NewApp = () => {
         )}
       </div>
 
+      {/* SIDEBAR DIVIDER */}
+      <div
+        onMouseDown={startDrag('sidebar', sidebarWidth)}
+        style={{
+          width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+          cursor: "col-resize", flexShrink: 0, position: "relative"
+        }}
+      >
+        <div style={{
+          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          width: "2px", height: "30px", background: "#666", borderRadius: "2px"
+        }} />
+      </div>
+
       {/* 3. CENTER STAGE */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1e1e1e" }}>
         {/* TOOLBAR */}
@@ -1995,7 +2056,7 @@ const NewApp = () => {
               <button onClick={() => setViewMode("code")} title="Code Only" style={{ ...iconBtnStyle, background: viewMode === "code" ? "#3e3e42" : "transparent" }}> <FileText size={14} /> </button>
               <button onClick={() => setViewMode("split")} title="Split View" style={{ ...iconBtnStyle, background: viewMode === "split" ? "#3e3e42" : "transparent" }}> <Columns size={14} /> </button>
               <button onClick={() => setViewMode("graph")} title="Graph Only" style={{ ...iconBtnStyle, background: viewMode === "graph" ? "#3e3e42" : "transparent" }}> <Layers size={14} /> </button>
-              {sidebarView === "explorer" && (
+              {(sidebarView === "explorer" || sidebarView === "github") && (
                 <>
                   <div style={{ width: 1, height: 20, background: "#444", alignSelf: "center" }} />
                   <button onClick={() => setViewMode("fileMap")} title="File Dependency Map" style={{ ...iconBtnStyle, background: viewMode === "fileMap" ? "#3e3e42" : "transparent", color: viewMode === "fileMap" ? "#4caf50" : "#ccc" }}> <GitBranch size={14} /> </button>
@@ -2013,7 +2074,7 @@ const NewApp = () => {
         {/* CANVAS */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden", display: "flex" }}>
           {(viewMode === "code" || viewMode === "split") && (
-            <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "none", height: "100%" }}>
+            <div style={{ flex: viewMode === "split" ? `0 0 ${codePaneWidth}%` : "1", borderRight: "none", height: "100%" }}>
               <textarea
                 value={sidebarView === "explorer" ? currentFileContent : sidebarView === "github" ? githubFileContent : (activeSnippet ? activeSnippet.content : '')}
                 onChange={sidebarView === "github" ? undefined : handleCodeChange}
@@ -2025,10 +2086,13 @@ const NewApp = () => {
 
           {/* Split View Divider */}
           {viewMode === "split" && (
-            <div style={{
-              width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
-              cursor: "col-resize", flexShrink: 0, position: "relative"
-            }}>
+            <div
+              onMouseDown={startDrag('codepane', codePaneWidth)}
+              style={{
+                width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+                cursor: "col-resize", flexShrink: 0, position: "relative"
+              }}
+            >
               <div style={{
                 position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
                 width: "2px", height: "30px", background: "#666", borderRadius: "2px"
@@ -2072,11 +2136,39 @@ const NewApp = () => {
               />
             </div>
           )}
+
+          {/* FILE DEPENDENCY MAP - GitHub */}
+          {viewMode === "fileMap" && sidebarView === "github" && (
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+              <FileDepGraph
+                dependencies={githubDependencies}
+                fileTree={githubTree || { type: 'folder', name: 'root', children: {} }}
+                selectedFile={githubSelectedFile}
+                onFileSelect={(path) => { setGithubSelectedFile(path); }}
+                graphMemory={graphMemory}
+                setGraphMemory={setGraphMemory}
+              />
+            </div>
+          )}
         </div>
       </div>
 
+      {/* RIGHT PANEL DIVIDER */}
+      <div
+        onMouseDown={startDrag('rightpanel', rightPanelWidth)}
+        style={{
+          width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+          cursor: "col-resize", flexShrink: 0, position: "relative"
+        }}
+      >
+        <div style={{
+          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          width: "2px", height: "30px", background: "#666", borderRadius: "2px"
+        }} />
+      </div>
+
       {/* 4. RIGHT PANEL — INSPECTOR */}
-      <div style={{ width: "260px", background: "#252526", borderLeft: "1px solid #1e1e1e", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ width: `${rightPanelWidth}px`, background: "#252526", borderLeft: "none", display: "flex", flexDirection: "column", overflowY: "auto", flexShrink: 0 }}>
         <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
           <Search size={14} color="#4caf50" /> Inspector
         </div>
