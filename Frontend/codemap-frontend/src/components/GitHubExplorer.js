@@ -26,12 +26,20 @@ const getFileIcon = (filename) => {
 // ============================================
 // TREE NODE (Read-Only)
 // ============================================
-const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, selectedFile, onFileSelect, loadingFile }) => {
+const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, selectedFile, onFileSelect, loadingFile, dependencies }) => {
     const isFolder = node.type === 'folder';
     const fullPath = path.join('/');
     const isExpanded = expandedFolders.has(fullPath);
     const isSelected = selectedFile === fullPath;
     const isLoading = loadingFile === fullPath;
+
+    // Dependency info
+    const fileDeps = dependencies?.imports?.get(fullPath) || [];
+    const importedBy = dependencies?.importedBy?.get(fullPath) || [];
+    const selectedFileDeps = dependencies?.imports?.get(selectedFile) || [];
+    const selectedFileImportedBy = dependencies?.importedBy?.get(selectedFile) || [];
+    const isImportedBySelected = selectedFileDeps.includes(fullPath);
+    const isImporterOfSelected = selectedFileImportedBy.includes(fullPath);
 
     const handleClick = (e) => {
         e.stopPropagation();
@@ -50,9 +58,9 @@ const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, sele
                     display: 'flex', alignItems: 'center', gap: '4px',
                     padding: '3px 8px', paddingLeft: `${depth * 16 + 8}px`,
                     cursor: 'pointer', fontSize: '0.82rem',
-                    color: isSelected ? '#fff' : '#bbb',
-                    background: isSelected ? '#37373d' : 'transparent',
-                    borderLeft: isSelected ? '2px solid #4caf50' : '2px solid transparent',
+                    color: isSelected ? '#fff' : isImportedBySelected ? '#4caf50' : isImporterOfSelected ? '#64b5f6' : '#bbb',
+                    background: isSelected ? '#37373d' : isImportedBySelected ? 'rgba(76,175,80,0.08)' : isImporterOfSelected ? 'rgba(100,181,246,0.08)' : 'transparent',
+                    borderLeft: isSelected ? '2px solid #4caf50' : isImportedBySelected ? '2px solid #4caf50' : isImporterOfSelected ? '2px solid #64b5f6' : '2px solid transparent',
                     transition: 'background 0.1s'
                 }}
                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#2a2d2e'; }}
@@ -87,9 +95,25 @@ const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, sele
                     </span>
                 )}
 
-                {!isFolder && node._ghSize != null && (
+                {!isFolder && node._ghSize != null && !fileDeps.length && !importedBy.length && (
                     <span style={{ fontSize: '0.6rem', color: '#555', marginLeft: 'auto', flexShrink: 0 }}>
                         {node._ghSize > 1024 ? `${(node._ghSize / 1024).toFixed(1)}KB` : `${node._ghSize}B`}
+                    </span>
+                )}
+
+                {/* Dependency badges */}
+                {!isFolder && (fileDeps.length > 0 || importedBy.length > 0) && (
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: '3px', flexShrink: 0 }}>
+                        {fileDeps.length > 0 && (
+                            <span style={{ fontSize: '0.6rem', background: '#1a3a1a', color: '#4caf50', padding: '0 4px', borderRadius: '3px' }} title={`Imports ${fileDeps.length} file(s)`}>
+                                →{fileDeps.length}
+                            </span>
+                        )}
+                        {importedBy.length > 0 && (
+                            <span style={{ fontSize: '0.6rem', background: '#1a2a3a', color: '#64b5f6', padding: '0 4px', borderRadius: '3px' }} title={`Imported by ${importedBy.length} file(s)`}>
+                                ←{importedBy.length}
+                            </span>
+                        )}
                     </span>
                 )}
             </div>
@@ -113,6 +137,7 @@ const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, sele
                                 selectedFile={selectedFile}
                                 onFileSelect={onFileSelect}
                                 loadingFile={loadingFile}
+                                dependencies={dependencies}
                             />
                         ))}
                 </div>
@@ -124,7 +149,7 @@ const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, sele
 // ============================================
 // MAIN COMPONENT
 // ============================================
-const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, repoInfo }) => {
+const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, repoInfo, dependencies }) => {
     const [expandedFolders, setExpandedFolders] = useState(new Set(['']));
 
     const toggleFolder = (path) => {
@@ -145,6 +170,7 @@ const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, rep
     }
 
     const fileCount = countFiles(treeData);
+    const scannedCount = dependencies ? countScannedFiles(treeData) : 0;
 
     return (
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -154,7 +180,7 @@ const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, rep
                     borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between'
                 }}>
                     <span>{repoInfo.owner}/{repoInfo.repo}</span>
-                    <span>{fileCount} files</span>
+                    <span>{fileCount} files{scannedCount > 0 ? ` · ${scannedCount} scanned` : ''}</span>
                 </div>
             )}
             {treeData.children && Object.entries(treeData.children)
@@ -174,6 +200,7 @@ const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, rep
                         selectedFile={selectedFile}
                         onFileSelect={onFileSelect}
                         loadingFile={loadingFile}
+                        dependencies={dependencies}
                     />
                 ))}
         </div>
@@ -184,6 +211,12 @@ function countFiles(node) {
     if (node.type === 'file') return 1;
     if (!node.children) return 0;
     return Object.values(node.children).reduce((sum, child) => sum + countFiles(child), 0);
+}
+
+function countScannedFiles(node) {
+    if (node.type === 'file') return node.content ? 1 : 0;
+    if (!node.children) return 0;
+    return Object.values(node.children).reduce((sum, child) => sum + countScannedFiles(child), 0);
 }
 
 export default GitHubExplorer;

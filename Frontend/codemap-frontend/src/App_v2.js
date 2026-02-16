@@ -1349,6 +1349,9 @@ const NewApp = () => {
     }
   };
 
+  // GitHub dependency state
+  const [githubDependencies, setGithubDependencies] = useState({ imports: new Map(), importedBy: new Map() });
+
   // Handle GitHub file selection
   const handleGithubFileSelect = async (filePath, node) => {
     if (!githubRepoInfo || !node?._ghPath) return;
@@ -1360,6 +1363,26 @@ const NewApp = () => {
       const content = await fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, node._ghPath);
       setGithubFileContent(content);
       setGithubLoadingFile(null);
+
+      // Inject content into the tree node for dependency scanning
+      setGithubTree(prev => {
+        if (!prev) return prev;
+        const updated = JSON.parse(JSON.stringify(prev));
+        const parts = filePath.split('/');
+        let current = updated;
+        for (const part of parts) {
+          if (current.children && current.children[part]) {
+            current = current.children[part];
+          }
+        }
+        if (current && current.type === 'file') {
+          current.content = content;
+        }
+        // Re-scan dependencies with updated tree
+        const deps = scanTreeDependencies(updated);
+        setGithubDependencies(deps);
+        return updated;
+      });
     } catch (err) {
       setGithubFileContent(`// Error loading file: ${err.message}`);
       setGithubLoadingFile(null);
@@ -1903,6 +1926,7 @@ const NewApp = () => {
               onFileSelect={handleGithubFileSelect}
               loadingFile={githubLoadingFile}
               repoInfo={githubRepoInfo}
+              dependencies={githubDependencies}
             />
           </>
         )}
@@ -1989,13 +2013,26 @@ const NewApp = () => {
         {/* CANVAS */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden", display: "flex" }}>
           {(viewMode === "code" || viewMode === "split") && (
-            <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "1px solid #333", height: "100%" }}>
+            <div style={{ flex: viewMode === "split" ? "0 0 40%" : "1", borderRight: "none", height: "100%" }}>
               <textarea
                 value={sidebarView === "explorer" ? currentFileContent : sidebarView === "github" ? githubFileContent : (activeSnippet ? activeSnippet.content : '')}
                 onChange={sidebarView === "github" ? undefined : handleCodeChange}
                 readOnly={sidebarView === "github"}
                 style={{ ...editorStyle, ...(sidebarView === "github" ? { opacity: 0.85 } : {}) }} spellCheck="false"
               />
+            </div>
+          )}
+
+          {/* Split View Divider */}
+          {viewMode === "split" && (
+            <div style={{
+              width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+              cursor: "col-resize", flexShrink: 0, position: "relative"
+            }}>
+              <div style={{
+                position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                width: "2px", height: "30px", background: "#666", borderRadius: "2px"
+              }} />
             </div>
           )}
 
