@@ -28,8 +28,22 @@ const getFileIcon = (filename, isActive) => {
         case 'js':
         case 'jsx':
             return <FileCode size={14} color="#f1e05a" />;
+        case 'ts':
+        case 'tsx':
+            return <FileCode size={14} color="#3178c6" />;
+        case 'cpp':
+        case 'cc':
+        case 'c':
+        case 'h':
+            return <FileCode size={14} color="#f34b7d" />;
+        case 'go':
+            return <FileCode size={14} color="#00ADD8" />;
+        case 'rs':
+            return <FileCode size={14} color="#dea584" />;
         case 'json':
             return <FileCode size={14} color="#cb8c00" />;
+        case 'md':
+            return <FileText size={14} color="#083fa1" />;
         default:
             return <FileText size={14} color={color} />;
     }
