@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import axios from "axios";
 import ReactFlow, {
   Background,
@@ -789,9 +789,65 @@ const nodeTypes = {
   loop: LoopNode
 };
 
-const FlowGraph = ({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }) => {
+const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }, ref) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Expose export functionality to parent
+  useImperativeHandle(ref, () => ({
+    exportImage: (fileName) => {
+      // 1. Calculate bounds from current nodes state (which has measured dimensions)
+      if (nodes.length === 0) {
+        alert("No graph to export.");
+        return;
+      }
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      nodes.forEach(node => {
+        const x = node.position.x;
+        const y = node.position.y;
+        const w = node.width || 150;
+        const h = node.height || 60;
+
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x + w > maxX) maxX = x + w;
+        if (y + h > maxY) maxY = y + h;
+      });
+
+      const PADDING = 50;
+      const width = (maxX - minX) + PADDING * 2;
+      const height = (maxY - minY) + PADDING * 2;
+
+      const selector = '.react-flow__viewport';
+      const node = document.querySelector(selector);
+
+      if (!node) return;
+
+      toPng(node, {
+        backgroundColor: '#1e1e1e',
+        width: width,
+        height: height,
+        style: {
+          width: width,
+          height: height,
+          transform: `translate(${-minX + PADDING}px, ${-minY + PADDING}px) scale(1)`,
+        },
+        pixelRatio: 2,
+      })
+        .then((dataUrl) => {
+          const link = document.createElement('a');
+          link.download = `codemap-flowchart-${fileName || 'overview'}.png`;
+          link.href = dataUrl;
+          link.click();
+        })
+        .catch((err) => {
+          console.error('Failed to export image:', err);
+          alert('Failed to export. See console.');
+        });
+    }
+  }));
 
   // Create a unique key based on node IDs to force re-layout when needed
   const graphKey = useMemo(() => {
@@ -844,7 +900,7 @@ const FlowGraph = ({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }
       </ReactFlow>
     </div>
   );
-};
+});
 
 // ===========================================
 // 3b. FILE DEPENDENCY GRAPH COMPONENT
@@ -1290,6 +1346,7 @@ const NewApp = () => {
   const [codePaneWidth, setCodePaneWidth] = useState(40); // percentage
   const [rightPanelWidth, setRightPanelWidth] = useState(260);
   const containerRef = useRef(null);
+  const graphRef = useRef(null);
   const dragRef = useRef(null); // { type, startX, startValue }
 
   // Drag handler
@@ -1820,31 +1877,11 @@ const NewApp = () => {
     downloadAnchorNode.remove();
   };
 
-  // Export Graph PNG
+  // Export Graph PNG (FIXED: Captures Entire Graph using Ref)
   const handleDownloadImage = () => {
-    const selector = '.react-flow__viewport'; // Capture just the viewport content
-    const node = document.querySelector(selector) || document.querySelector('.react-flow');
-
-    if (!node) return;
-
-    toPng(node, {
-      backgroundColor: '#1e1e1e',
-      style: {
-        transform: 'translate(0, 0) scale(1)', // Reset transform to capture full content if possible, but viewport usually needs current transform
-      },
-      // Increase quality
-      pixelRatio: 2,
-    })
-      .then((dataUrl) => {
-        const link = document.createElement('a');
-        link.download = `codemap-flowchart-${currentFunc || 'overview'}.png`;
-        link.href = dataUrl;
-        link.click();
-      })
-      .catch((err) => {
-        console.error('Failed to export image:', err);
-        alert('Failed to export image. See console for details.');
-      });
+    if (graphRef.current) {
+      graphRef.current.exportImage(currentFunc);
+    }
   };
 
   const handleDragOver = useCallback((event) => {
@@ -2165,6 +2202,7 @@ const NewApp = () => {
                 <div style={centerMsgStyle}>Analyzing...</div>
               ) : analysisResult && analysisResult.graph_data ? (
                 <FlowGraph
+                  ref={graphRef}
                   data={analysisResult.graph_data}
                   onNodeClick={onGraphNodeClick}
                   graphMemory={graphMemory}
