@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Folder, FolderOpen, FileText, FileCode,
-    ChevronRight, ChevronDown
+    ChevronRight, ChevronDown, Search, X
 } from 'lucide-react';
 
 // ============================================
@@ -151,6 +151,56 @@ const RemoteTreeNode = ({ node, path, depth, expandedFolders, toggleFolder, sele
 // ============================================
 const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, repoInfo, dependencies }) => {
     const [expandedFolders, setExpandedFolders] = useState(new Set(['']));
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Filter tree based on search term
+    const filteredTree = useMemo(() => {
+        if (!searchTerm.trim()) return treeData;
+
+        const filterNode = (node) => {
+            if (node.type === 'file') {
+                return node.name.toLowerCase().includes(searchTerm.toLowerCase()) ? node : null;
+            }
+            if (node.type === 'folder' && node.children) {
+                const filteredChildren = {};
+                let hasMatchingChild = false;
+
+                Object.entries(node.children).forEach(([name, child]) => {
+                    const filtered = filterNode(child);
+                    if (filtered) {
+                        filteredChildren[name] = filtered;
+                        hasMatchingChild = true;
+                    }
+                });
+
+                if (hasMatchingChild) {
+                    return { ...node, children: filteredChildren };
+                }
+            }
+            return null;
+        };
+
+        return filterNode(treeData);
+    }, [treeData, searchTerm]);
+
+    // Auto-expand folders when searching
+    useEffect(() => {
+        if (searchTerm.trim() && filteredTree) {
+            const allPaths = new Set();
+            const collectPaths = (node, path = '') => {
+                if (node.type === 'folder') {
+                    allPaths.add(path);
+                    if (node.children) {
+                        Object.entries(node.children).forEach(([name, child]) => {
+                            collectPaths(child, path ? `${path}/${name}` : name);
+                        });
+                    }
+                }
+            };
+            collectPaths(filteredTree);
+            setExpandedFolders(allPaths);
+        }
+    }, [searchTerm, filteredTree]);
 
     const toggleFolder = (path) => {
         setExpandedFolders(prev => {
@@ -169,40 +219,78 @@ const GitHubExplorer = ({ treeData, selectedFile, onFileSelect, loadingFile, rep
         );
     }
 
-    const fileCount = countFiles(treeData);
-    const scannedCount = dependencies ? countScannedFiles(treeData) : 0;
+    const displayTree = searchTerm.trim() ? filteredTree : treeData;
+    const fileCount = displayTree ? countFiles(displayTree) : 0;
+    const scannedCount = dependencies ? countScannedFiles(displayTree) : 0;
 
     return (
         <div style={{ flex: 1, overflowY: 'auto' }}>
             {repoInfo && (
                 <div style={{
                     padding: '6px 12px', fontSize: '0.7rem', color: '#666',
-                    borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between'
+                    borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '8px'
                 }}>
-                    <span>{repoInfo.owner}/{repoInfo.repo}</span>
-                    <span>{fileCount} files{scannedCount > 0 ? ` · ${scannedCount} scanned` : ''}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{repoInfo.owner}/{repoInfo.repo}</span>
+                        <span>{fileCount} files{scannedCount > 0 ? ` · ${scannedCount} scanned` : ''}</span>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Search size={12} style={{ position: 'absolute', left: 8, color: '#666' }} />
+                        <input
+                            type="text"
+                            placeholder="Search matches..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{
+                                width: '100%',
+                                background: '#1e1e1e',
+                                border: '1px solid #333',
+                                borderRadius: '4px',
+                                padding: '4px 8px 4px 24px',
+                                color: '#d4d4d4',
+                                fontSize: '0.75rem',
+                                outline: 'none'
+                            }}
+                        />
+                        {searchTerm && (
+                            <X
+                                size={12}
+                                style={{ position: 'absolute', right: 8, cursor: 'pointer', color: '#888' }}
+                                onClick={() => setSearchTerm('')}
+                            />
+                        )}
+                    </div>
                 </div>
             )}
-            {treeData.children && Object.entries(treeData.children)
-                .sort(([, a], [, b]) => {
-                    if (a.type === 'folder' && b.type !== 'folder') return -1;
-                    if (a.type !== 'folder' && b.type === 'folder') return 1;
-                    return a.name.localeCompare(b.name);
-                })
-                .map(([name, node]) => (
-                    <RemoteTreeNode
-                        key={name}
-                        node={node}
-                        path={[name]}
-                        depth={0}
-                        expandedFolders={expandedFolders}
-                        toggleFolder={toggleFolder}
-                        selectedFile={selectedFile}
-                        onFileSelect={onFileSelect}
-                        loadingFile={loadingFile}
-                        dependencies={dependencies}
-                    />
-                ))}
+
+            {!displayTree ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#555', fontSize: '0.8rem' }}>
+                    No matching files found.
+                </div>
+            ) : (
+                displayTree.children && Object.entries(displayTree.children)
+                    .sort(([, a], [, b]) => {
+                        if (a.type === 'folder' && b.type !== 'folder') return -1;
+                        if (a.type !== 'folder' && b.type === 'folder') return 1;
+                        return a.name.localeCompare(b.name);
+                    })
+                    .map(([name, node]) => (
+                        <RemoteTreeNode
+                            key={name}
+                            node={node}
+                            path={[name]}
+                            depth={0}
+                            expandedFolders={expandedFolders}
+                            toggleFolder={toggleFolder}
+                            selectedFile={selectedFile}
+                            onFileSelect={onFileSelect}
+                            loadingFile={loadingFile}
+                            dependencies={dependencies}
+                        />
+                    ))
+            )}
         </div>
     );
 };

@@ -15,7 +15,8 @@ import {
   Folder, Code, GitBranch, Play, Settings,
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
-  Search, AlertTriangle, CheckCircle, Info, Zap, Github, Loader
+  Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
+  AlertTriangle, CheckCircle, Info, Zap
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
@@ -1364,7 +1365,11 @@ const NewApp = () => {
   const [loading, setLoading] = useState(false);
 
   // 3. GITHUB STATE
-  const [repoInput, setRepoInput] = useState('');
+  const [repoInput, setRepoInput] = useState(() => localStorage.getItem('lastRepoInput') || '');
+  useEffect(() => {
+    localStorage.setItem('lastRepoInput', repoInput);
+  }, [repoInput]);
+
   const [githubTree, setGithubTree] = useState(null);
   const [githubRepoInfo, setGithubRepoInfo] = useState(null); // { owner, repo, branch }
   const [githubFileContent, setGithubFileContent] = useState('');
@@ -1802,6 +1807,22 @@ const NewApp = () => {
     }
   };
 
+  // Export Graph
+  const handleExportGraph = () => {
+    if (!analysisResult || !analysisResult.graph_data) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(analysisResult.graph_data, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `codemap_flow_${currentFunc || 'graph'}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  const handleDragOver = useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
   return (
     <div ref={containerRef} style={{ display: "flex", height: "100vh", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontFamily: "Segoe UI, sans-serif" }}>
 
@@ -2067,6 +2088,13 @@ const NewApp = () => {
             <button style={runBtnStyle} onClick={() => handleAnalyze(null)}>
               <Play size={14} fill="white" />
               {sidebarView === "snippets" ? " Analyze Snippet" : " Analyze File"}
+            </button>
+            {/* EXPORT BUTTON */}
+            <button style={{ ...iconBtnStyle, marginLeft: "auto" }} onClick={handleExportGraph} title="Export Graph JSON">
+              <Download size={14} />
+            </button>
+            <button style={{ ...iconBtnStyle }} onClick={() => setViewMode(viewMode === "code" ? "split" : "code")} title="Toggle Code">
+              {viewMode === "code" ? <Columns size={14} /> : <Maximize size={14} />}
             </button>
           </div>
         </div>
