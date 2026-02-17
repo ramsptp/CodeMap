@@ -11,12 +11,13 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
 import JSZip from 'jszip';
+import { toPng } from 'html-to-image';
 import {
   Folder, Code, GitBranch, Play, Settings,
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
   Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
-  AlertTriangle, CheckCircle, Info, Zap
+  AlertTriangle, CheckCircle, Info, Zap, Image
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
@@ -1807,7 +1808,7 @@ const NewApp = () => {
     }
   };
 
-  // Export Graph
+  // Export Graph JSON
   const handleExportGraph = () => {
     if (!analysisResult || !analysisResult.graph_data) return;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(analysisResult.graph_data, null, 2));
@@ -1817,6 +1818,33 @@ const NewApp = () => {
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
+  };
+
+  // Export Graph PNG
+  const handleDownloadImage = () => {
+    const selector = '.react-flow__viewport'; // Capture just the viewport content
+    const node = document.querySelector(selector) || document.querySelector('.react-flow');
+
+    if (!node) return;
+
+    toPng(node, {
+      backgroundColor: '#1e1e1e',
+      style: {
+        transform: 'translate(0, 0) scale(1)', // Reset transform to capture full content if possible, but viewport usually needs current transform
+      },
+      // Increase quality
+      pixelRatio: 2,
+    })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = `codemap-flowchart-${currentFunc || 'overview'}.png`;
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch((err) => {
+        console.error('Failed to export image:', err);
+        alert('Failed to export image. See console for details.');
+      });
   };
 
   const handleDragOver = useCallback((event) => {
@@ -2089,9 +2117,12 @@ const NewApp = () => {
               <Play size={14} fill="white" />
               {sidebarView === "snippets" ? " Analyze Snippet" : " Analyze File"}
             </button>
-            {/* EXPORT BUTTON */}
+            {/* EXPORT BUTTONS */}
             <button style={{ ...iconBtnStyle, marginLeft: "auto" }} onClick={handleExportGraph} title="Export Graph JSON">
               <Download size={14} />
+            </button>
+            <button style={{ ...iconBtnStyle }} onClick={handleDownloadImage} title="Download PNG Image">
+              <Image size={14} />
             </button>
             <button style={{ ...iconBtnStyle }} onClick={() => setViewMode(viewMode === "code" ? "split" : "code")} title="Toggle Code">
               {viewMode === "code" ? <Columns size={14} /> : <Maximize size={14} />}
