@@ -1056,6 +1056,59 @@ async def analyze_code(request: CodeRequest):
     # Generate insights from graph data
     result["insights"] = generate_insights(result)
     
+    # Generate function dependency graph (when multiple functions exist)
+    if result["functions"]["count"] > 1 and not request.function_name:
+        try:
+            lang = request.language.lower()
+            func_bodies = {}
+            
+            # Extract function bodies for dependency analysis
+            if lang == "python":
+                tree = ast.parse(request.code)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.FunctionDef):
+                        lines = request.code.split('\n')
+                        func_bodies[node.name] = '\n'.join(lines[node.lineno - 1:node.end_lineno])
+            elif lang == "java":
+                for m in extract_java_methods(request.code):
+                    func_bodies[m["name"]] = m["body"]
+            elif lang in ["javascript", "typescript", "js", "ts"]:
+                for f in extract_js_functions(request.code):
+                    func_bodies[f["name"]] = f["body"]
+            elif lang in ["cpp", "c", "c++"]:
+                for f in extract_cpp_methods(request.code):
+                    func_bodies[f["name"]] = f["body"]
+            
+            all_func_names = set(func_bodies.keys())
+            
+            # Build dependency edges: which function calls which
+            dep_edges = []
+            for caller, body in func_bodies.items():
+                calls = extract_function_calls(body, lang)
+                for call in calls:
+                    if call in all_func_names and call != caller:
+                        dep_edges.append({"source": caller, "target": call})
+            
+            # Build graph data for the frontend
+            dep_nodes = []
+            for i, fname in enumerate(func_bodies.keys()):
+                cx = result["complexity"].get(fname, 0)
+                dep_nodes.append({
+                    "id": fname,
+                    "data": {
+                        "label": fname + "()",
+                        "complexity": cx,
+                    },
+                    "type": "funcDep",
+                })
+            
+            result["func_dep_graph"] = {
+                "nodes": dep_nodes,
+                "edges": [{"id": f'{e["source"]}->{e["target"]}', "source": e["source"], "target": e["target"]} for e in dep_edges],
+            }
+        except Exception as e:
+            logger.warning(f"Function dep graph failed: {e}")
+    
     return result
 
 

@@ -784,7 +784,176 @@ const getLayoutedElements = (nodes, edges) => {
 };
 
 // ===========================================
-// 3. GRAPH COMPONENT (WITH LAYOUT MEMORY)
+// 3. FUNCTION DEPENDENCY GRAPH
+// ===========================================
+const FuncDepNode = ({ data }) => {
+  const cx = data.complexity || 0;
+  const borderColor = cx <= 5 ? '#4caf50' : cx <= 10 ? '#ff9800' : '#f44336';
+  return (
+    <div style={{
+      padding: '12px 20px', borderRadius: '12px',
+      border: `2px solid ${borderColor}`,
+      background: `linear-gradient(135deg, ${borderColor}11, #1e1e1e)`,
+      color: '#e0e0e0', fontSize: '0.85rem', fontFamily: 'monospace',
+      textAlign: 'center', cursor: 'pointer', minWidth: '120px',
+      transition: 'all 0.2s', boxShadow: `0 2px 12px ${borderColor}22`,
+    }}>
+      <Handle type="target" position={Position.Top} style={{ background: borderColor, width: 8, height: 8 }} />
+      <div style={{ fontWeight: 700, marginBottom: '2px' }}>{data.label}</div>
+      <div style={{ fontSize: '0.6rem', color: borderColor, fontWeight: 600 }}>
+        complexity: {cx}
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ background: borderColor, width: 8, height: 8 }} />
+    </div>
+  );
+};
+
+const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey }) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const funcDepNodeTypes = useMemo(() => ({ funcDep: FuncDepNode }), []);
+
+  // Compute dagre layout
+  const computeLayout = useCallback((depNodes, depEdges) => {
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80, marginx: 40, marginy: 40 });
+
+    depNodes.forEach(n => g.setNode(n.id, { width: 160, height: 70 }));
+    depEdges.forEach(e => g.setEdge(e.source, e.target));
+    dagre.layout(g);
+
+    return depNodes.map(n => {
+      const pos = g.node(n.id);
+      return { ...n, position: { x: pos.x - 80, y: pos.y - 35 } };
+    });
+  }, []);
+
+  // Style edges
+  const styleEdges = useCallback((depEdges) => {
+    return depEdges.map(e => ({
+      ...e,
+      animated: true,
+      style: { stroke: '#7c4dff', strokeWidth: 2, opacity: 0.7 },
+      markerEnd: { type: 'arrowclosed', color: '#7c4dff' },
+      label: 'calls',
+      labelStyle: { fill: '#888', fontSize: '0.6rem' },
+      labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!depData || !depData.nodes || depData.nodes.length === 0) return;
+
+    const key = memoryKey || 'funcDep';
+    const saved = graphMemory?.[key];
+
+    if (saved && saved.nodes) {
+      // Restore saved positions
+      setNodes(saved.nodes);
+      setEdges(saved.edges || styleEdges(depData.edges));
+    } else {
+      // Fresh dagre layout
+      const layoutedNodes = computeLayout(depData.nodes, depData.edges);
+      const styledEdges = styleEdges(depData.edges);
+      setNodes(layoutedNodes);
+      setEdges(styledEdges);
+    }
+  }, [depData, memoryKey, graphMemory, setNodes, setEdges, computeLayout, styleEdges]);
+
+  // Save positions when nodes are dragged
+  const handleNodesChange = useCallback((changes) => {
+    onNodesChange(changes);
+
+    // Save on drag stop
+    const hasDragStop = changes.some(c => c.type === 'position' && c.dragging === false);
+    if (hasDragStop && setGraphMemory && memoryKey) {
+      // Defer to next tick so nodes state is updated
+      setTimeout(() => {
+        setNodes(currentNodes => {
+          setGraphMemory(prev => ({
+            ...prev,
+            [memoryKey]: { nodes: currentNodes, edges }
+          }));
+          return currentNodes;
+        });
+      }, 0);
+    }
+  }, [onNodesChange, setGraphMemory, memoryKey, setNodes, edges]);
+
+  // Reset layout
+  const handleReset = useCallback(() => {
+    if (!depData) return;
+    const layoutedNodes = computeLayout(depData.nodes, depData.edges);
+    const styledEdges = styleEdges(depData.edges);
+    setNodes(layoutedNodes);
+    setEdges(styledEdges);
+    // Clear memory
+    if (setGraphMemory && memoryKey) {
+      setGraphMemory(prev => {
+        const updated = { ...prev };
+        delete updated[memoryKey];
+        return updated;
+      });
+    }
+  }, [depData, computeLayout, styleEdges, setNodes, setEdges, setGraphMemory, memoryKey]);
+
+  const handleNodeClick = useCallback((event, node) => {
+    // Save positions before drilling in
+    if (setGraphMemory && memoryKey) {
+      setGraphMemory(prev => ({
+        ...prev,
+        [memoryKey]: { nodes, edges }
+      }));
+    }
+    if (onFuncClick) {
+      onFuncClick(node.id);
+    }
+  }, [onFuncClick, setGraphMemory, memoryKey, nodes, edges]);
+
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {nodes.length > 0 ? (
+        <>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
+            nodeTypes={funcDepNodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+          >
+            <Background color="#1e1e1e" gap={20} size={1} />
+            <Controls />
+          </ReactFlow>
+          <button
+            onClick={handleReset}
+            title="Reset node positions"
+            style={{
+              position: 'absolute', top: 10, right: 10, zIndex: 10,
+              background: '#333', border: '1px solid #555', borderRadius: '6px',
+              color: '#aaa', padding: '5px 10px', cursor: 'pointer',
+              fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px',
+            }}
+          >
+            ↻ Reset Layout
+          </button>
+        </>
+      ) : (
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#555', textAlign: 'center' }}>
+          <p style={{ fontSize: '1.2rem' }}>📊 Function Dependencies</p>
+          <p style={{ fontSize: '0.8rem' }}>No dependencies detected</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===========================================
+// 4. FLOW GRAPH COMPONENT (WITH LAYOUT MEMORY)
 // ===========================================
 const nodeTypes = {
   terminator: TerminatorNode,
@@ -934,19 +1103,58 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
   // Update React Flow state when layout changes
   useEffect(() => {
     if (layoutedNodes.length > 0) {
-      // Only update if actually different to avoid loops
-      // Simple length check or just trust the memo
-      setNodes(layoutedNodes);
-      setEdges(layoutedEdges);
+      // Check if we have saved positions in graphMemory
+      const saved = graphMemory?.[memoryKey];
+      if (saved && saved.nodes && saved.nodes.length === layoutedNodes.length) {
+        setNodes(saved.nodes);
+        setEdges(saved.edges || layoutedEdges);
+      } else {
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
+      }
     }
-  }, [layoutedNodes, layoutedEdges, setNodes, setEdges]);
+  }, [layoutedNodes, layoutedEdges, setNodes, setEdges]); // intentionally exclude graphMemory/memoryKey to avoid re-render loops
+
+  // Save positions when nodes are dragged
+  const handleNodesChange = useCallback((changes) => {
+    onNodesChange(changes);
+
+    const hasDragStop = changes.some(c => c.type === 'position' && c.dragging === false);
+    if (hasDragStop && setGraphMemory && memoryKey) {
+      setTimeout(() => {
+        setNodes(currentNodes => {
+          setEdges(currentEdges => {
+            setGraphMemory(prev => ({
+              ...prev,
+              [memoryKey]: { nodes: currentNodes, edges: currentEdges }
+            }));
+            return currentEdges;
+          });
+          return currentNodes;
+        });
+      }, 0);
+    }
+  }, [onNodesChange, setGraphMemory, memoryKey, setNodes, setEdges]);
+
+  // Reset to dagre layout
+  const handleReset = useCallback(() => {
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+    if (setGraphMemory && memoryKey) {
+      setGraphMemory(prev => {
+        const updated = { ...prev };
+        delete updated[memoryKey];
+        return updated;
+      });
+    }
+  }, [layoutedNodes, layoutedEdges, setNodes, setEdges, setGraphMemory, memoryKey]);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         nodeTypes={nodeTypes}
@@ -956,6 +1164,18 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         <Background color="#333" gap={16} />
         <Controls />
       </ReactFlow>
+      <button
+        onClick={handleReset}
+        title="Reset node positions"
+        style={{
+          position: 'absolute', top: 10, right: 10, zIndex: 10,
+          background: '#333', border: '1px solid #555', borderRadius: '6px',
+          color: '#aaa', padding: '5px 10px', cursor: 'pointer',
+          fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px',
+        }}
+      >
+        ↻ Reset Layout
+      </button>
     </div>
   );
 });
@@ -1494,6 +1714,7 @@ const NewApp = () => {
   // Backend State
   const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [analysisCache, setAnalysisCache] = useState({}); // filePath -> { result, func }
 
   // 3. GITHUB STATE
   const [repoInput, setRepoInput] = useState(() => localStorage.getItem('lastRepoInput') || '');
@@ -1710,10 +1931,27 @@ const NewApp = () => {
 
   // Handle file selection from FileExplorer
   const handleFileSelect = useCallback((path, content) => {
+    // Cache current analysis before switching
+    if (selectedFilePath && analysisResult) {
+      setAnalysisCache(prev => ({
+        ...prev,
+        [selectedFilePath]: { result: analysisResult, func: currentFunc }
+      }));
+    }
     setSelectedFilePath(path);
     setCurrentFunc(null);
-    setAnalysisResult(null);
-  }, []);
+    setAiExplanation(null);
+    // Restore cached analysis if available
+    setAnalysisResult(prev => {
+      const cached = analysisCache[path];
+      if (cached) {
+        // Restore function too, but only after a tick
+        setTimeout(() => setCurrentFunc(cached.func), 0);
+        return cached.result;
+      }
+      return null;
+    });
+  }, [selectedFilePath, analysisResult, currentFunc, analysisCache]);
 
   // Effect: auto-analyze when a cross-file navigation is pending
   useEffect(() => {
@@ -2048,7 +2286,24 @@ const NewApp = () => {
       }
 
       const response = await axios.post("http://127.0.0.1:8000/analyze", payload);
-      setAnalysisResult(response.data);
+      const newResult = response.data;
+
+      // Preserve func_dep_graph from whole-file analysis when drilling into a function
+      if (specificFunction && analysisResult?.func_dep_graph && !newResult.func_dep_graph) {
+        newResult.func_dep_graph = analysisResult.func_dep_graph;
+      }
+
+      setAnalysisResult(newResult);
+      setAiExplanation(null);
+
+      // Cache the result
+      const cacheKey = sidebarView === 'explorer' ? selectedFilePath : `snippet-${activeSnippetId}`;
+      if (cacheKey) {
+        setAnalysisCache(prev => ({
+          ...prev,
+          [cacheKey]: { result: newResult, func: specificFunction || null }
+        }));
+      }
 
     } catch (error) {
       console.error("Analysis failed:", error);
@@ -2415,6 +2670,14 @@ const NewApp = () => {
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
               {loading ? (
                 <div style={centerMsgStyle}>Analyzing...</div>
+              ) : analysisResult && analysisResult.func_dep_graph && !currentFunc ? (
+                <FuncDepGraph
+                  depData={analysisResult.func_dep_graph}
+                  onFuncClick={(funcName) => handleAnalyze(funcName)}
+                  graphMemory={graphMemory}
+                  setGraphMemory={setGraphMemory}
+                  memoryKey={`${sidebarView === 'explorer' ? selectedFilePath : 'snippet'}:funcDep`}
+                />
               ) : analysisResult && analysisResult.graph_data ? (
                 <FlowGraph
                   ref={graphRef}
@@ -2494,6 +2757,23 @@ const NewApp = () => {
           </div>
         ) : (
           <>
+            {/* Back to Dependencies button */}
+            {currentFunc && analysisResult?.func_dep_graph && (
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid #333' }}>
+                <button
+                  onClick={() => { setCurrentFunc(null); setAiExplanation(null); }}
+                  style={{
+                    width: '100%', padding: '7px 10px',
+                    background: '#7c4dff22', border: '1px solid #7c4dff44',
+                    borderRadius: '6px', cursor: 'pointer',
+                    color: '#b388ff', fontSize: '0.75rem', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  ← Back to Dependencies
+                </button>
+              </div>
+            )}
             {/* Function List */}
             <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
               <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
