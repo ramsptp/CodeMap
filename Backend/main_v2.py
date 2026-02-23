@@ -805,7 +805,171 @@ def extract_cpp_methods(code):
 
 
 # ==========================================
-# 7. MAIN API HANDLER
+# 7. CROSS-FILE ANALYSIS (PHASE 1)
+# ==========================================
+
+def extract_symbols(code: str, language: str) -> list:
+    """Extract exported function/method names from a file"""
+    lang = language.lower()
+    names = []
+    
+    try:
+        if lang == "python":
+            tree = ast.parse(code)
+            names = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+        elif lang == "java":
+            methods = extract_java_methods(code)
+            names = [m["name"] for m in methods]
+        elif lang in ["javascript", "typescript", "js", "ts"]:
+            funcs = extract_js_functions(code)
+            names = [f["name"] for f in funcs]
+        elif lang in ["cpp", "c", "c++"]:
+            funcs = extract_cpp_methods(code)
+            names = [f["name"] for f in funcs]
+    except Exception as e:
+        logger.warning(f"Symbol extraction failed: {e}")
+    
+    return names
+
+
+def extract_function_calls(code: str, language: str) -> list:
+    """Extract function call names from code (best-effort via regex)"""
+    lang = language.lower()
+    calls = set()
+    
+    # Universal regex: word followed by ( — catches most function calls
+    # Exclude language keywords that look like calls
+    KEYWORDS = {
+        "if", "else", "elif", "for", "while", "return", "import", "from",
+        "class", "def", "try", "except", "finally", "with", "as", "in",
+        "print", "range", "len", "str", "int", "float", "list", "dict",
+        "set", "tuple", "type", "isinstance", "hasattr", "getattr",
+        "super", "self", "this", "new", "delete", "typeof", "void",
+        "switch", "case", "catch", "throw", "throws", "public", "private",
+        "protected", "static", "final", "abstract", "interface",
+        "const", "let", "var", "function", "async", "await",
+        "console", "document", "window", "require", "module", "exports",
+        "include", "using", "namespace", "template", "virtual", "override",
+        "sizeof", "nullptr", "true", "false", "null", "undefined",
+        "printf", "scanf", "cout", "cin", "endl", "std",
+    }
+    
+    # Match word( pattern — standard function calls
+    for match in re.finditer(r'\b([a-zA-Z_]\w*)\s*\(', code):
+        name = match.group(1)
+        if name not in KEYWORDS and not name[0].isupper():
+            # Skip class constructors (capitalized) for now
+            calls.add(name)
+    
+    # For Python: also catch calls like module.function()
+    if lang == "python":
+        for match in re.finditer(r'\b\w+\.([a-zA-Z_]\w*)\s*\(', code):
+            name = match.group(1)
+            if name not in KEYWORDS:
+                calls.add(name)
+    
+    return list(calls)
+
+
+def detect_language(path: str) -> str:
+    """Detect language from file extension"""
+    ext = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
+    LANG_MAP = {
+        'py': 'python', 'java': 'java',
+        'js': 'javascript', 'jsx': 'javascript',
+        'ts': 'typescript', 'tsx': 'typescript',
+        'cpp': 'cpp', 'cc': 'cpp', 'c': 'c', 'h': 'cpp', 'hpp': 'cpp',
+    }
+    return LANG_MAP.get(ext, '')
+
+
+class FileEntry(BaseModel):
+    path: str
+    content: str
+    language: Optional[str] = None
+
+
+class MultiFileRequest(BaseModel):
+    files: list  # List of FileEntry dicts
+
+
+@app.post("/analyze-multi")
+async def analyze_multi(request: MultiFileRequest):
+    """
+    Analyze multiple files and return a cross-file symbol table.
+    
+    Returns:
+        symbols: { filePath: [functionName, ...] }
+        calls:   { filePath: { functionName: resolvedFilePath } }
+        file_deps: { filePath: [importedFilePath, ...] }
+    """
+    symbols = {}      # path -> [function names defined here]
+    all_calls = {}     # path -> [function names called here]
+    resolved = {}      # path -> { callName: sourceFilePath }
+    file_deps = {}     # path -> [imported file paths]
+    
+    try:
+        # Pass 1: Extract symbols (function definitions) from every file
+        for file_dict in request.files:
+            path = file_dict["path"] if isinstance(file_dict, dict) else file_dict.path
+            content = file_dict["content"] if isinstance(file_dict, dict) else file_dict.content
+            lang_raw = file_dict.get("language") if isinstance(file_dict, dict) else file_dict.language
+            lang = lang_raw or detect_language(path)
+            
+            if not lang:
+                continue
+            
+            syms = extract_symbols(content, lang)
+            symbols[path] = syms
+        
+        # Build reverse lookup: functionName -> filePath (first definition wins)
+        symbol_lookup = {}  # functionName -> filePath
+        for path, syms in symbols.items():
+            for sym in syms:
+                if sym not in symbol_lookup:
+                    symbol_lookup[sym] = path
+        
+        # Pass 2: Extract function calls and resolve them
+        for file_dict in request.files:
+            path = file_dict["path"] if isinstance(file_dict, dict) else file_dict.path
+            content = file_dict["content"] if isinstance(file_dict, dict) else file_dict.content
+            lang_raw = file_dict.get("language") if isinstance(file_dict, dict) else file_dict.language
+            lang = lang_raw or detect_language(path)
+            
+            if not lang:
+                continue
+            
+            calls = extract_function_calls(content, lang)
+            all_calls[path] = calls
+            
+            # Resolve: which calls map to functions defined in OTHER files?
+            resolved_calls = {}
+            deps = set()
+            
+            for call_name in calls:
+                source_file = symbol_lookup.get(call_name)
+                if source_file and source_file != path:
+                    resolved_calls[call_name] = source_file
+                    deps.add(source_file)
+            
+            if resolved_calls:
+                resolved[path] = resolved_calls
+            if deps:
+                file_deps[path] = list(deps)
+        
+    except Exception as e:
+        logger.error(f"Multi-file analysis failed: {str(e)}")
+        return {"error": str(e)}
+    
+    return {
+        "symbols": symbols,
+        "calls": resolved,
+        "file_deps": file_deps
+    }
+
+
+# ==========================================
+# 8. MAIN API HANDLER
 # ==========================================
 @app.post("/analyze")
 async def analyze_code(request: CodeRequest):

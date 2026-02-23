@@ -755,6 +755,10 @@ const getLayoutedElements = (nodes, edges) => {
         yOffset = 30;
       }
     }
+    if (node.type === 'externalCall') {
+      xOffset = 110;
+      yOffset = 30;
+    }
 
     // Final visibility check for empty nodes
     const style = { ...node.style };
@@ -786,10 +790,40 @@ const nodeTypes = {
   terminator: TerminatorNode,
   process: ProcessNode,
   decision: DecisionNode,
-  loop: LoopNode
+  loop: LoopNode,
+  externalCall: ({ data }) => {
+    return (
+      <div style={{
+        padding: '10px 16px',
+        borderRadius: '8px',
+        border: '2px dashed #7c4dff',
+        background: 'linear-gradient(135deg, #2d1b69 0%, #1a1a2e 100%)',
+        color: '#bb86fc',
+        fontSize: '0.75rem',
+        fontFamily: 'monospace',
+        textAlign: 'center',
+        maxWidth: '220px',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 0 12px rgba(124, 77, 255, 0.2)',
+      }}>
+        <Handle type="target" position={Position.Top} style={{ background: '#7c4dff', width: 8, height: 8 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+          <span style={{ fontSize: '0.85rem' }}>📎</span>
+          <span style={{ fontWeight: 700 }}>{data.label}</span>
+        </div>
+        {data.sourceFile && (
+          <div style={{ color: 'rgba(187, 134, 252, 0.6)', fontSize: '0.6rem', marginTop: '4px' }}>
+            from {data.sourceFile.split('/').pop()}
+          </div>
+        )}
+        <Handle type="source" position={Position.Bottom} style={{ background: '#7c4dff', width: 8, height: 8 }} />
+      </div>
+    );
+  },
 };
 
-const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey }, ref) => {
+const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey, crossFileData, currentFilePath }, ref) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -867,11 +901,35 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
     if (!data || !data.nodes || data.nodes.length === 0) return { nodes: [], edges: [] };
 
     console.log(`🔄 Calculating new layout: ${memoryKey || 'unnamed'}`);
-    const layout = getLayoutedElements(data.nodes, data.edges || []);
+
+    // Transform nodes: mark external calls if crossFileData is available
+    let transformedNodes = data.nodes;
+    if (crossFileData && crossFileData.calls && currentFilePath) {
+      const callsForFile = crossFileData.calls[currentFilePath] || {};
+      transformedNodes = data.nodes.map(node => {
+        // Check if this process node's label matches an external function call
+        if (node.type === 'process' && node.data.label) {
+          const label = node.data.label.trim();
+          // Try to match function calls like "helper()" or "result = helper(args)"
+          for (const [funcName, sourceFile] of Object.entries(callsForFile)) {
+            if (label.includes(funcName + '(') || label === funcName) {
+              return {
+                ...node,
+                type: 'externalCall',
+                data: { ...node.data, label: funcName + '()', sourceFile }
+              };
+            }
+          }
+        }
+        return node;
+      });
+    }
+
+    const layout = getLayoutedElements(transformedNodes, data.edges || []);
 
     // layoutCache.current[cacheKey] = layout; // Disable saving to cache
     return layout;
-  }, [data.nodes, data.edges, memoryKey]); // Removed graphKey to avoid loops: layout
+  }, [data.nodes, data.edges, memoryKey, crossFileData, currentFilePath]); // Removed graphKey to avoid loops: layout
 
   // Update React Flow state when layout changes
   useEffect(() => {
@@ -1048,7 +1106,7 @@ const fileDepGraphNodeTypes = {
   fileNode: FileDepNode
 };
 
-const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory }) => {
+const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory, crossFileData }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [hoveredNode, setHoveredNode] = useState(null);
@@ -1195,8 +1253,22 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
           animated: true,
           style: { stroke: '#4da3ff', strokeWidth: 1.5, opacity: 0.6 },
           markerEnd: { type: 'arrowclosed', color: '#4da3ff' },
-          label: 'imports',
-          labelStyle: { fill: '#888', fontSize: '0.6rem' },
+          label: (() => {
+            // Show function names from crossFileData if available
+            if (crossFileData && crossFileData.calls) {
+              const calls = crossFileData.calls[sourceFile] || {};
+              const funcsFromTarget = Object.entries(calls)
+                .filter(([, src]) => src === targetFile)
+                .map(([name]) => name);
+              if (funcsFromTarget.length > 0) {
+                return funcsFromTarget.length <= 3
+                  ? funcsFromTarget.join(', ')
+                  : funcsFromTarget.slice(0, 2).join(', ') + ` +${funcsFromTarget.length - 2}`;
+              }
+            }
+            return 'imports';
+          })(),
+          labelStyle: { fill: '#aaa', fontSize: '0.6rem', fontFamily: 'monospace' },
           labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
         });
       });
@@ -1241,7 +1313,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
         [graphKey]: { nodes: layoutedNodes, edges: newEdges }
       }));
     }
-  }, [graphKey, dependencies, setGraphMemory, graphMemory, selectedFile]); // selectedFile added for memory load selection
+  }, [graphKey, dependencies, setGraphMemory, graphMemory, selectedFile, crossFileData]); // crossFileData added for edge labels
 
   // 2. Selection & Sticky Focus Logic
   useEffect(() => {
@@ -1347,6 +1419,7 @@ const NewApp = () => {
   const [rightPanelWidth, setRightPanelWidth] = useState(260);
   const containerRef = useRef(null);
   const graphRef = useRef(null);
+  const pendingCrossFileAnalysis = useRef(null); // { filePath, funcName }
   const dragRef = useRef(null); // { type, startX, startValue }
 
   // Drag handler
@@ -1521,6 +1594,44 @@ const NewApp = () => {
     setDependencies(deps);
   }, [fileTree]);
 
+  // Cross-file analysis state
+  const [crossFileData, setCrossFileData] = useState(null);
+
+  // Auto-run cross-file analysis when dependencies change
+  useEffect(() => {
+    const runCrossFileAnalysis = async () => {
+      // Collect all files with content from the tree
+      const files = [];
+      const collectFiles = (node, path) => {
+        if (node.type === 'file' && node.content) {
+          files.push({ path, content: node.content });
+        } else if (node.type === 'folder' && node.children) {
+          for (const [name, child] of Object.entries(node.children)) {
+            collectFiles(child, path ? `${path}/${name}` : name);
+          }
+        }
+      };
+      collectFiles(fileTree, '');
+
+      if (files.length < 2) {
+        setCrossFileData(null);
+        return;
+      }
+
+      try {
+        const response = await axios.post('http://127.0.0.1:8000/analyze-multi', { files });
+        if (response.data && !response.data.error) {
+          setCrossFileData(response.data);
+          console.log('📊 Cross-file analysis:', response.data);
+        }
+      } catch (err) {
+        console.warn('Cross-file analysis unavailable:', err.message);
+      }
+    };
+
+    runCrossFileAnalysis();
+  }, [fileTree]);
+
   // --- ACTIONS ---
 
   // Handle file selection from FileExplorer
@@ -1529,6 +1640,20 @@ const NewApp = () => {
     setCurrentFunc(null);
     setAnalysisResult(null);
   }, []);
+
+  // Effect: auto-analyze when a cross-file navigation is pending
+  useEffect(() => {
+    if (pendingCrossFileAnalysis.current && currentFileContent) {
+      const { filePath, funcName } = pendingCrossFileAnalysis.current;
+      if (filePath === selectedFilePath) {
+        pendingCrossFileAnalysis.current = null;
+        // Small delay to let React finish rendering the new file
+        setTimeout(() => {
+          handleAnalyze(funcName);
+        }, 100);
+      }
+    }
+  }, [selectedFilePath, currentFileContent]);
 
   // Handle file upload (multiple files)
   const handleUploadFiles = useCallback((files) => {
@@ -1860,6 +1985,15 @@ const NewApp = () => {
   };
 
   const onGraphNodeClick = (event, node) => {
+    // Check if this is an external call node - navigate cross-file
+    if (node.type === 'externalCall' && node.data.sourceFile) {
+      const funcName = node.data.label.replace(/\(\)$/, ''); // Strip trailing ()
+      // Set pending analysis, then navigate to the file
+      pendingCrossFileAnalysis.current = { filePath: node.data.sourceFile, funcName };
+      handleFileSelect(node.data.sourceFile, null);
+      return;
+    }
+
     if (!currentFunc && analysisResult?.functions?.names.includes(node.data.label)) {
       handleAnalyze(node.data.label);
     }
@@ -2208,6 +2342,8 @@ const NewApp = () => {
                   graphMemory={graphMemory}
                   setGraphMemory={setGraphMemory}
                   memoryKey={getMemoryKey()}
+                  crossFileData={crossFileData}
+                  currentFilePath={sidebarView === 'explorer' ? selectedFilePath : githubSelectedFile}
                 />
               ) : (
                 <div style={centerMsgStyle}>
@@ -2230,6 +2366,7 @@ const NewApp = () => {
                 onFileSelect={handleFileSelect}
                 graphMemory={graphMemory}
                 setGraphMemory={setGraphMemory}
+                crossFileData={crossFileData}
               />
             </div>
           )}
