@@ -1196,14 +1196,26 @@ async def explain_code(request: ExplainRequest):
         func_context = f" for the function `{request.function_name}`" if request.function_name else ""
         
         prompt = f"""You are a code explanation assistant for a visual code mapping tool called CodeMap.
-Explain the following {request.language} code{func_context} in plain English.
+The user is viewing a flowchart of their code. Explain the following {request.language} code{func_context}.
+
+Format your response EXACTLY like this (plain text only, no markdown):
+
+OVERVIEW:
+[1-2 sentences: what this code does and why. Keep it simple.]
+
+ALGORITHM:
+1. [First step — matches the Start node in the flowchart]
+2. [Next step — describe what happens, match process/decision nodes]
+3. [Continue numbering each logical step]
+... [Use "Loop:" prefix for loop steps, "Check:" prefix for if/else branches]
 
 Rules:
-- Be concise (3-5 sentences max)
-- Focus on WHAT the code does, not HOW (no line-by-line narration)
-- Mention key patterns: recursion, error handling, API calls, data transformations
+- The algorithm steps should map to the flowchart nodes the user sees
+- Use "Check:" for if/else decisions (e.g., "Check: Is b not zero?")
+- Use "Loop:" for while/for loops (e.g., "Loop: While b != 0, swap values")
+- Keep each step to one short line
 - Use simple language a junior developer would understand
-- Do NOT use markdown formatting, just plain text
+- Do NOT use markdown, bullet points, or bold — just plain numbered list
 
 Code:
 ```{request.language}

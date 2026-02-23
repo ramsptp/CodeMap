@@ -2591,15 +2591,56 @@ const NewApp = () => {
                 <div style={{ fontSize: '0.7rem', color: '#7c4dff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Zap size={12} /> AI Explanation
                 </div>
-                <div style={{
-                  background: 'linear-gradient(135deg, #1a1a2e 0%, #1e1e1e 100%)',
-                  borderRadius: '8px', padding: '12px 14px',
-                  fontSize: '0.78rem', color: '#d4d4d4', lineHeight: '1.6',
-                  borderLeft: '3px solid #7c4dff',
-                  fontFamily: 'system-ui, sans-serif',
-                }}>
-                  {aiExplanation}
-                </div>
+                {(() => {
+                  // Parse structured response into Overview + Algorithm
+                  const text = aiExplanation;
+                  const overviewMatch = text.match(/OVERVIEW:\s*\n?([\s\S]*?)(?=\n\s*ALGORITHM:|$)/i);
+                  const algorithmMatch = text.match(/ALGORITHM:\s*\n?([\s\S]*?)$/i);
+                  const overview = overviewMatch ? overviewMatch[1].trim() : text;
+                  const algorithm = algorithmMatch ? algorithmMatch[1].trim() : null;
+
+                  return (
+                    <>
+                      {/* Overview */}
+                      <div style={{
+                        background: 'linear-gradient(135deg, #1a1a2e 0%, #1e1e1e 100%)',
+                        borderRadius: '8px', padding: '10px 12px', marginBottom: '8px',
+                        fontSize: '0.76rem', color: '#d4d4d4', lineHeight: '1.5',
+                        borderLeft: '3px solid #7c4dff',
+                        fontFamily: 'system-ui, sans-serif',
+                      }}>
+                        {overview}
+                      </div>
+
+                      {/* Algorithm Steps */}
+                      {algorithm && (
+                        <div style={{
+                          background: '#1a1a1a', borderRadius: '8px', padding: '10px 12px',
+                          fontSize: '0.72rem', lineHeight: '1.6', fontFamily: 'system-ui, sans-serif',
+                        }}>
+                          <div style={{ color: '#7c4dff', fontSize: '0.65rem', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
+                            Algorithm
+                          </div>
+                          {algorithm.split('\n').filter(l => l.trim()).map((line, i) => {
+                            const isCheck = /check:/i.test(line);
+                            const isLoop = /loop:/i.test(line);
+                            const color = isCheck ? '#ff9800' : isLoop ? '#00bcd4' : '#aaa';
+                            return (
+                              <div key={i} style={{
+                                padding: '3px 0', color,
+                                borderLeft: `2px solid ${isCheck || isLoop ? color : 'transparent'}`,
+                                paddingLeft: isCheck || isLoop ? '8px' : '0',
+                                marginBottom: '2px',
+                              }}>
+                                {line.trim()}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 
