@@ -1575,6 +1575,14 @@ const NewApp = () => {
   // 4. GRAPH LAYOUT MEMORY STATE
   const [graphMemory, setGraphMemory] = useState({});
 
+  // AI Explanation state
+  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('codemap_gemini_key') || '');
+  const [aiExplanation, setAiExplanation] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyStatus, setApiKeyStatus] = useState(null); // null | 'ok' | 'error'
+
   // 4. DEPENDENCY TRACKING STATE
   const [dependencies, setDependencies] = useState({ imports: new Map(), importedBy: new Map() });
 
@@ -1631,6 +1639,72 @@ const NewApp = () => {
 
     runCrossFileAnalysis();
   }, [fileTree]);
+
+  // Initialize Gemini API key on mount if saved
+  useEffect(() => {
+    const savedKey = localStorage.getItem('codemap_gemini_key');
+    if (savedKey) {
+      axios.post('http://127.0.0.1:8000/set-api-key', { api_key: savedKey })
+        .then(res => {
+          if (res.data.status === 'ok') setApiKeyStatus('ok');
+          else setApiKeyStatus('error');
+        })
+        .catch(() => setApiKeyStatus('error'));
+    }
+  }, []);
+
+  // Save API key handler
+  const handleSaveApiKey = async () => {
+    if (!apiKeyInput.trim()) return;
+    try {
+      const res = await axios.post('http://127.0.0.1:8000/set-api-key', { api_key: apiKeyInput.trim() });
+      if (res.data.status === 'ok') {
+        localStorage.setItem('codemap_gemini_key', apiKeyInput.trim());
+        setGeminiApiKey(apiKeyInput.trim());
+        setApiKeyStatus('ok');
+        setShowApiKeyModal(false);
+      } else {
+        setApiKeyStatus('error');
+      }
+    } catch {
+      setApiKeyStatus('error');
+    }
+  };
+
+  // Explain code handler
+  const handleExplain = async () => {
+    if (!geminiApiKey) {
+      setShowApiKeyModal(true);
+      return;
+    }
+    const code = sidebarView === 'explorer' ? currentFileContent : sidebarView === 'github' ? githubFileContent : activeSnippet?.content;
+    if (!code) return;
+
+    const lang = sidebarView === 'explorer'
+      ? (activeFileName?.split('.').pop() || 'python')
+      : sidebarView === 'github'
+        ? (githubSelectedFile?.split('.').pop() || 'python')
+        : (activeSnippet?.language || 'python');
+
+    setAiLoading(true);
+    setAiExplanation(null);
+    try {
+      const res = await axios.post('http://127.0.0.1:8000/explain', {
+        code,
+        language: lang,
+        function_name: currentFunc || null,
+      });
+      if (res.data.error) {
+        setAiExplanation('⚠️ ' + res.data.error);
+      } else {
+        setAiExplanation(res.data.explanation);
+      }
+    } catch (err) {
+      setAiExplanation('⚠️ Failed to connect to AI service.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // --- ACTIONS ---
 
@@ -2298,6 +2372,13 @@ const NewApp = () => {
             <button style={{ ...iconBtnStyle }} onClick={() => setViewMode(viewMode === "code" ? "split" : "code")} title="Toggle Code">
               {viewMode === "code" ? <Columns size={14} /> : <Maximize size={14} />}
             </button>
+            <button
+              style={{ ...iconBtnStyle, color: apiKeyStatus === 'ok' ? '#4caf50' : '#ccc' }}
+              onClick={() => { setApiKeyInput(geminiApiKey); setShowApiKeyModal(true); }}
+              title="AI Settings (Gemini API Key)"
+            >
+              <Settings size={14} />
+            </button>
           </div>
         </div>
 
@@ -2483,6 +2564,45 @@ const NewApp = () => {
               </div>
             )}
 
+            {/* AI Explain Button */}
+            {analysisResult && (
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid #333' }}>
+                <button
+                  onClick={handleExplain}
+                  disabled={aiLoading}
+                  style={{
+                    width: '100%', padding: '8px 12px',
+                    background: aiLoading ? '#333' : 'linear-gradient(135deg, #7c4dff, #448aff)',
+                    border: 'none', borderRadius: '6px', cursor: aiLoading ? 'wait' : 'pointer',
+                    color: '#fff', fontSize: '0.78rem', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    transition: 'all 0.2s', boxShadow: aiLoading ? 'none' : '0 2px 8px rgba(124, 77, 255, 0.3)',
+                  }}
+                >
+                  {aiLoading ? <Loader size={14} className="spin" /> : <Zap size={14} />}
+                  {aiLoading ? 'Thinking...' : `✨ Explain ${currentFunc ? currentFunc + '()' : 'Code'}`}
+                </button>
+              </div>
+            )}
+
+            {/* AI Explanation */}
+            {aiExplanation && (
+              <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
+                <div style={{ fontSize: '0.7rem', color: '#7c4dff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Zap size={12} /> AI Explanation
+                </div>
+                <div style={{
+                  background: 'linear-gradient(135deg, #1a1a2e 0%, #1e1e1e 100%)',
+                  borderRadius: '8px', padding: '12px 14px',
+                  fontSize: '0.78rem', color: '#d4d4d4', lineHeight: '1.6',
+                  borderLeft: '3px solid #7c4dff',
+                  fontFamily: 'system-ui, sans-serif',
+                }}>
+                  {aiExplanation}
+                </div>
+              </div>
+            )}
+
             {/* Insights */}
             {analysisResult?.insights && (
               <div style={{ padding: "12px" }}>
@@ -2530,6 +2650,55 @@ const NewApp = () => {
           </>
         )}
       </div>
+
+      {/* API KEY MODAL */}
+      {showApiKeyModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999,
+        }} onClick={() => setShowApiKeyModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#252526', border: '1px solid #444', borderRadius: '12px',
+            padding: '24px', width: '420px', maxWidth: '90vw',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }}>
+            <h3 style={{ margin: '0 0 4px', color: '#fff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Zap size={18} color="#7c4dff" /> AI Settings
+            </h3>
+            <p style={{ color: '#888', fontSize: '0.75rem', margin: '0 0 16px' }}>
+              Enter your Gemini API key. Get one free at{' '}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c4dff' }}>aistudio.google.com</a>
+            </p>
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSaveApiKey()}
+              placeholder="AIza..."
+              style={{
+                width: '100%', padding: '10px 12px', background: '#1e1e1e', border: '1px solid #444',
+                borderRadius: '6px', color: '#d4d4d4', fontSize: '0.85rem', fontFamily: 'monospace',
+                outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+            {apiKeyStatus === 'error' && (
+              <p style={{ color: '#f44336', fontSize: '0.7rem', margin: '8px 0 0' }}>⚠️ Invalid API key. Please check and try again.</p>
+            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowApiKeyModal(false)} style={{
+                padding: '8px 16px', background: 'transparent', border: '1px solid #555',
+                borderRadius: '6px', color: '#888', cursor: 'pointer', fontSize: '0.8rem',
+              }}>Cancel</button>
+              <button onClick={handleSaveApiKey} style={{
+                padding: '8px 20px', background: 'linear-gradient(135deg, #7c4dff, #448aff)',
+                border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer',
+                fontSize: '0.8rem', fontWeight: 600,
+              }}>Save Key</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

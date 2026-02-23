@@ -3,6 +3,7 @@ import re
 import logging
 import uuid
 from typing import Optional
+import google.generativeai as genai
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -1148,3 +1149,70 @@ def generate_insights(result):
         })
     
     return insights
+
+
+# ==========================================
+# 10. AI CODE EXPLANATION (GEMINI)
+# ==========================================
+
+# In-memory API key storage
+_gemini_api_key = None
+_gemini_model = None
+
+
+class ApiKeyRequest(BaseModel):
+    api_key: str
+
+
+class ExplainRequest(BaseModel):
+    code: str
+    language: str = "python"
+    function_name: Optional[str] = None
+
+
+@app.post("/set-api-key")
+async def set_api_key(request: ApiKeyRequest):
+    global _gemini_api_key, _gemini_model
+    _gemini_api_key = request.api_key
+    try:
+        genai.configure(api_key=_gemini_api_key)
+        _gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+        # Quick validation — list models
+        return {"status": "ok", "message": "API key set successfully"}
+    except Exception as e:
+        _gemini_api_key = None
+        _gemini_model = None
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/explain")
+async def explain_code(request: ExplainRequest):
+    global _gemini_api_key, _gemini_model
+    
+    if not _gemini_api_key or not _gemini_model:
+        return {"error": "No API key configured. Please set your Gemini API key first."}
+    
+    try:
+        func_context = f" for the function `{request.function_name}`" if request.function_name else ""
+        
+        prompt = f"""You are a code explanation assistant for a visual code mapping tool called CodeMap.
+Explain the following {request.language} code{func_context} in plain English.
+
+Rules:
+- Be concise (3-5 sentences max)
+- Focus on WHAT the code does, not HOW (no line-by-line narration)
+- Mention key patterns: recursion, error handling, API calls, data transformations
+- Use simple language a junior developer would understand
+- Do NOT use markdown formatting, just plain text
+
+Code:
+```{request.language}
+{request.code}
+```"""
+        
+        response = _gemini_model.generate_content(prompt)
+        return {"explanation": response.text.strip()}
+        
+    except Exception as e:
+        logger.error(f"Gemini explain failed: {str(e)}")
+        return {"error": f"AI explanation failed: {str(e)}"}
