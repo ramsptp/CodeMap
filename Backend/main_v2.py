@@ -1193,7 +1193,43 @@ async def explain_code(request: ExplainRequest):
         return {"error": "No API key configured. Please set your Gemini API key first."}
     
     try:
-        func_context = f" for the function `{request.function_name}`" if request.function_name else ""
+        code_to_explain = request.code
+        func_context = ""
+        
+        # If a specific function is selected, extract just that function's code
+        if request.function_name:
+            func_context = f" for the function `{request.function_name}`"
+            lang = request.language.lower()
+            extracted = None
+            
+            try:
+                if lang == "python":
+                    tree = ast.parse(request.code)
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.FunctionDef) and node.name == request.function_name:
+                            lines = request.code.split('\n')
+                            extracted = '\n'.join(lines[node.lineno - 1:node.end_lineno])
+                            break
+                elif lang == "java":
+                    methods = extract_java_methods(request.code)
+                    target = next((m for m in methods if m["name"] == request.function_name), None)
+                    if target:
+                        extracted = f'{request.function_name}() {{\n{target["body"]}\n}}'
+                elif lang in ["javascript", "typescript", "js", "ts"]:
+                    funcs = extract_js_functions(request.code)
+                    target = next((f for f in funcs if f["name"] == request.function_name), None)
+                    if target:
+                        extracted = f'function {request.function_name}() {{\n{target["body"]}\n}}'
+                elif lang in ["cpp", "c", "c++"]:
+                    funcs = extract_cpp_methods(request.code)
+                    target = next((f for f in funcs if f["name"] == request.function_name), None)
+                    if target:
+                        extracted = f'{request.function_name}() {{\n{target["body"]}\n}}'
+            except Exception:
+                pass  # Fall back to full code
+            
+            if extracted:
+                code_to_explain = extracted
         
         prompt = f"""You are a code explanation assistant for a visual code mapping tool called CodeMap.
 The user is viewing a flowchart of their code. Explain the following {request.language} code{func_context}.
@@ -1219,7 +1255,7 @@ Rules:
 
 Code:
 ```{request.language}
-{request.code}
+{code_to_explain}
 ```"""
         
         response = _gemini_model.generate_content(prompt)
