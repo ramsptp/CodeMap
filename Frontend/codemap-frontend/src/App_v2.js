@@ -2904,12 +2904,15 @@ const NewApp = () => {
                           {algorithm.split('\n').filter(l => l.trim()).map((line, i) => {
                             const isCheck = /check:/i.test(line);
                             const isLoop = /loop:/i.test(line);
-                            const color = isCheck ? '#ff9800' : isLoop ? '#00bcd4' : '#aaa';
+                            const isStart = /^\s*1[\.\)]/i.test(line) || /\bstart\b/i.test(line) || /\bbegin\b/i.test(line);
+                            const isReturn = /\breturn\b/i.test(line) || /\bend\b/i.test(line) || /\boutput\b/i.test(line);
+                            const color = isCheck ? '#ff9800' : isLoop ? '#00bcd4' : isStart ? '#4caf50' : isReturn ? '#f44336' : '#aaa';
+                            const highlighted = isCheck || isLoop || isStart || isReturn;
                             return (
                               <div key={i} style={{
                                 padding: '3px 0', color,
-                                borderLeft: `2px solid ${isCheck || isLoop ? color : 'transparent'}`,
-                                paddingLeft: isCheck || isLoop ? '8px' : '0',
+                                borderLeft: `2px solid ${highlighted ? color : 'transparent'}`,
+                                paddingLeft: highlighted ? '8px' : '0',
                                 marginBottom: '2px',
                               }}>
                                 {line.trim()}
