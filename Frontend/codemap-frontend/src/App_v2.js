@@ -551,8 +551,10 @@ const getLayoutedElements = (nodes, edges) => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   // Use LR (Left-Right) for more horizontal spread
+  // Use tight-tree for standard AST-like flowchart branch behavior
   dagreGraph.setGraph({
     rankdir: 'TB',     // Top to Bottom main flow
+    ranker: 'tight-tree', // Better handling of strictly branching subtrees
     nodesep: 150,      // Significantly increased horizontal spacing to avoid overlaps
     ranksep: 120,      // Increased vertical spacing to accommodate tall wrapping nodes
     edgesep: 60,       // Tighter edges
@@ -590,8 +592,20 @@ const getLayoutedElements = (nodes, edges) => {
     dagreGraph.setNode(node.id, { width, height });
   });
 
-  // Add edges with rank constraints
-  edges.forEach((edge) => {
+  // Add edges to Dagre. Order matters for left-to-right placement in some cases.
+  // We want False branches to generally stay on the "main spine" (leftish if we consider right as branching)
+  // Dagre often places nodes based on sequence of addition.
+  // Let's sort edges so False/Done are added first.
+  const sortedEdges = [...edges].sort((a, b) => {
+    // False and Loop represent the main spine branch (downwards).
+    const aMain = (a.label === "False" || a.label === "Loop");
+    const bMain = (b.label === "False" || b.label === "Loop");
+    if (aMain && !bMain) return -1;
+    if (!aMain && bMain) return 1;
+    return 0;
+  });
+
+  sortedEdges.forEach((edge) => {
     // Force smoothstep for professional circuit-board look
     edge.type = 'smoothstep';
     edge.style = { ...edge.style, strokeWidth: 2, borderRadius: 20 }; // Smooth corners
@@ -599,132 +613,19 @@ const getLayoutedElements = (nodes, edges) => {
 
     const edgeConfig = {};
 
-    // Give False/Done branches more weight to push them horizontally
-    if (edge.label === "False" || edge.label === "Done") {
-      edgeConfig.weight = 2; // slightly less than before to allow manual override
-    } else if (edge.label === "True" || edge.label === "Loop") {
-      edgeConfig.weight = 1;
+    // Give False/Loop branches more weight to push them straight down
+    if (edge.label === "False" || edge.label === "Loop") {
+      edgeConfig.weight = 100; // Very high weight keeps it straight down
+      edgeConfig.minlen = 1;   // Standard rank drop
+    } else if (edge.label === "True" || edge.label === "Done") {
+      edgeConfig.weight = 1;  // Low weight allows it to branch off
+      edgeConfig.minlen = 1;
     }
 
     dagreGraph.setEdge(edge.source, edge.target, edgeConfig);
   });
 
   dagre.layout(dagreGraph);
-
-  // ===============================================
-  // POST-PROCESSING: THE "IRON SPINE" ALGORITHM
-  // ===============================================
-
-  // 1. Helper: Force a vertical line down from a start node (Brute Force)
-  // NOW WITH STRICT DOMINATOR CHECK TO PREVENT LEAKING TO MERGE NODES
-  const forceRightBranchAlignment = (startNodeId, targetX, sourceId, visited = new Set()) => {
-    if (visited.has(startNodeId)) return;
-
-    // STRICT DOMINATOR CHECK
-    // We only move this node if ALL its incoming edges come from:
-    // 1. The 'sourceId' (parent of the branch)
-    // 2. Nodes we have already visited/claimed in this traversal
-    const incomingEdges = edges.filter(e => e.target === startNodeId);
-
-    // Exception: If it's the very first node of the branch (direct child of sourceId),
-    // and it has other parents (e.g. merge), we might still want to shift it 
-    // IF the logic is "Right Branch starts here". 
-    // BUT if the first node is a merge node (e.g. empty true block), we should NOT shift it.
-    // So the check holds.
-
-    const isDominated = incomingEdges.every(e => {
-      return e.source === sourceId || visited.has(e.source);
-    });
-
-    // Debug
-    // console.log(`Checking ${startNodeId} for domination by [${sourceId}, ...visited]`);
-
-    if (!isDominated) {
-      // console.log(`STOP: Node ${startNodeId} is not dominated (has external incoming edges)`);
-      return;
-    }
-
-    visited.add(startNodeId);
-
-    const node = dagreGraph.node(startNodeId);
-    if (!node) return;
-
-    // FORCE X
-    node.x = targetX;
-
-    // Propagate to all children
-    const childrenEdges = edges.filter(e => e.source === startNodeId);
-    childrenEdges.forEach(e => {
-      forceRightBranchAlignment(e.target, targetX, sourceId, visited);
-    });
-  };
-
-  // 2. Helper: Shift a subtree (for initial placement)
-  const shiftSubtree = (nodeId, deltaX, visited = new Set()) => {
-    if (visited.has(nodeId)) return;
-    visited.add(nodeId);
-    const node = dagreGraph.node(nodeId);
-    if (node) {
-      node.x += deltaX;
-      edges.filter(e => e.source === nodeId).forEach(e => {
-        shiftSubtree(e.target, deltaX, visited);
-      });
-    }
-  };
-
-  // 3. Helper: Standard Recursive Vertical Aligner (for Down/False branch)
-  const alignVertical = (targetId, targetX, sourceId, visited = new Set()) => {
-    if (visited.has(targetId)) return;
-
-    // Same Dominator Check for Vertical Alignment?
-    // Generally yes, we don't want to force-align a merge node to the False branch
-    // if it also receives the True branch (from the right). 
-    // Merge node should ideally be centered (Dagre default), or aligned with Decision?
-    // If aligned with Decision, then False branch wins.
-    // Let's keep it simple: strict visual flow for straight down.
-
-    const incomingEdges = edges.filter(e => e.target === targetId);
-    const isDominated = incomingEdges.every(e => {
-      return e.source === sourceId || visited.has(e.source);
-    });
-
-    if (!isDominated) return;
-
-    visited.add(targetId);
-
-    const targetNode = dagreGraph.node(targetId);
-    if (!targetNode) return;
-
-    // Snap to column
-    targetNode.x = targetX;
-
-    // Recursion
-    const childrenEdges = edges.filter(e => e.source === targetId);
-    childrenEdges.forEach(edge => {
-      alignVertical(edge.target, targetX, sourceId, visited);
-    });
-  };
-
-  // Scan Decision AND Loop Nodes
-  nodes.forEach(node => {
-    if (node.type === "decision" || node.type === "loop") {
-      const decisionNode = dagreGraph.node(node.id);
-
-      // --- RIGHT BRANCH (True / Done) ---
-      const rightEdge = edges.find(e => e.source === node.id && (e.label === "True" || e.label === "Done"));
-      if (rightEdge) {
-        const targetId = rightEdge.target;
-        // Pass 'node.id' as the authorized source
-        forceRightBranchAlignment(targetId, decisionNode.x + 200, node.id);
-      }
-
-      // --- DOWN BRANCH (False / Loop) ---
-      const downEdge = edges.find(e => e.source === node.id && (e.label === "False" || e.label === "Loop"));
-      if (downEdge) {
-        alignVertical(downEdge.target, decisionNode.x, node.id);
-      }
-    }
-  });
 
   const layoutedNodes = nodes.map((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
@@ -751,8 +652,9 @@ const getLayoutedElements = (nodes, edges) => {
         xOffset = 0;
         yOffset = 0;
       } else {
-        xOffset = 110;
-        yOffset = 30;
+        const textLen = node.data.label.length;
+        xOffset = Math.min(Math.max(200, textLen * 8), 350) / 2;
+        yOffset = Math.max(60, Math.ceil(textLen / 30) * 30 + 40) / 2;
       }
     }
     if (node.type === 'externalCall') {
@@ -775,8 +677,7 @@ const getLayoutedElements = (nodes, edges) => {
         x: nodeWithPosition.x - xOffset,
         y: nodeWithPosition.y - yOffset,
       },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
+      // Using handles specified by backend, no global overrides
     };
   });
 
@@ -2942,7 +2843,11 @@ const NewApp = () => {
           <Search size={14} color="#4caf50" /> Inspector
         </div>
 
-        {!analysisResult ? (
+        {sidebarView === 'blueprint' ? (
+          <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+            Select a file in the blueprint file tree to view its metrics and dependencies.
+          </div>
+        ) : !analysisResult ? (
           <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
             Analyze code to see insights here.
           </div>

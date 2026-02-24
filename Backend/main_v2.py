@@ -156,7 +156,7 @@ class PythonFlowBuilder(ReactFlowBuilder):
             # Process TRUE branch
             t_entry, t_exit, t_term = self.stmt_sequence(stmt.body)
             if t_entry: 
-                self.add_edge(cond_node, t_entry, "True")
+                self.add_edge(cond_node, t_entry, "True", sourceHandle="right")
             
             # Process FALSE branch (else/elif)
             f_entry = f_exit = None
@@ -164,7 +164,7 @@ class PythonFlowBuilder(ReactFlowBuilder):
             if stmt.orelse:
                 f_entry, f_exit, f_term = self.stmt_sequence(stmt.orelse)
                 if f_entry: 
-                    self.add_edge(cond_node, f_entry, "False")
+                    self.add_edge(cond_node, f_entry, "False", sourceHandle="bottom")
             
             # MERGE LOGIC - Create explicit merge point
             # Only create merge if at least one branch continues (not terminal)
@@ -179,7 +179,7 @@ class PythonFlowBuilder(ReactFlowBuilder):
                 if f_exit and not f_term: 
                     self.add_edge(f_exit, merge)
                 elif not stmt.orelse:  # No else clause - direct connection
-                    self.add_edge(cond_node, merge, "False")
+                    self.add_edge(cond_node, merge, "False", sourceHandle="bottom")
                 
                 return cond_node, merge, False
             
@@ -198,15 +198,15 @@ class PythonFlowBuilder(ReactFlowBuilder):
             # Process loop body
             body_entry, body_exit, body_term = self.stmt_sequence(stmt.body)
             if body_entry: 
-                self.add_edge(loop_node, body_entry, "Loop")
+                self.add_edge(loop_node, body_entry, "Loop", sourceHandle="bottom")
             
             # Loop back (only if body doesn't terminate)
             if body_exit and not body_term: 
-                self.add_edge(body_exit, loop_node)
+                self.add_edge(body_exit, loop_node, targetHandle="left")
             
             # Exit point after loop
             after = self.add_node("Exit Loop", "process")
-            self.add_edge(loop_node, after, "Done")
+            self.add_edge(loop_node, after, "Done", sourceHandle="right")
             
             return loop_node, after, False
 
@@ -562,12 +562,11 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
                 b_entry, b_exit, b_term = self.process_block(body_stmts, new_context)
                 
                 if b_entry:
-                    # Loop Body -> Bottom (User request)
                     self.add_edge(loop_node, b_entry, "Loop", sourceHandle="bottom")
                     if b_exit and not b_term:
                         self.add_edge(b_exit, loop_node, targetHandle="left")
             
-            # Done -> Right (User request)
+            # Done -> Bottom
             self.add_edge(loop_node, after, "Done", sourceHandle="right")
             return loop_node, after, False
 
