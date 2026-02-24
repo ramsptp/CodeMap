@@ -3,6 +3,7 @@ import axios from "axios";
 import ReactFlow, {
   Background,
   Controls,
+  MiniMap,
   useNodesState,
   useEdgesState,
   Handle,
@@ -1162,12 +1163,30 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
       >
         <Background color="#333" gap={16} />
         <Controls />
+        <MiniMap
+          nodeColor={(n) => {
+            if (n.type === 'process') return '#4caf50';
+            if (n.type === 'decision') return '#ff9800';
+            if (n.type === 'loop') return '#2196f3';
+            if (n.type === 'externalCall') return '#9c27b0';
+            return '#888';
+          }}
+          nodeStrokeWidth={3}
+          style={{
+            backgroundColor: '#1e1e1e',
+            border: '1px solid #444',
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+          }}
+          maskColor="rgba(0, 0, 0, 0.4)"
+          position="top-right"
+        />
       </ReactFlow>
       <button
         onClick={handleReset}
         title="Reset node positions"
         style={{
-          position: 'absolute', top: 15, right: 15, zIndex: 100, // High z-index to overlay controls
+          position: 'absolute', top: 15, left: 15, zIndex: 100, // High z-index to overlay controls
           background: '#333', border: '1px solid #555', borderRadius: '6px',
           color: '#aaa', padding: '6px 12px', cursor: 'pointer',
           fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
