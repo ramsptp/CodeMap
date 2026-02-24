@@ -1467,11 +1467,51 @@ async def analyze_project(request: ProjectRequest):
         
         calls = resolved
         
+        # Cycle Detection using Tarjan's SCC algorithm
+        index = 0
+        indices = {}
+        lowlinks = {}
+        on_stack = set()
+        stack = []
+        sccs = []
+
+        def strongconnect(node):
+            nonlocal index
+            indices[node] = index
+            lowlinks[node] = index
+            index += 1
+            stack.append(node)
+            on_stack.add(node)
+
+            for neighbor in file_deps.get(node, []):
+                if neighbor not in indices:
+                    strongconnect(neighbor)
+                    lowlinks[node] = min(lowlinks[node], lowlinks[neighbor])
+                elif neighbor in on_stack:
+                    lowlinks[node] = min(lowlinks[node], indices[neighbor])
+
+            if lowlinks[node] == indices[node]:
+                scc = []
+                while True:
+                    w = stack.pop()
+                    on_stack.remove(w)
+                    scc.append(w)
+                    if w == node:
+                        break
+                if len(scc) > 1:
+                    sccs.append(set(scc))
+
+        for node in file_deps:
+            if node not in indices:
+                strongconnect(node)
+        
         # Build graph nodes and edges for the frontend
         graph_nodes = []
         for path, info in file_info.items():
             filename = path.split('/')[-1] if '/' in path else path.split('\\')[-1] if '\\' in path else path
             max_cx = max(info["complexity"].values()) if info["complexity"] else 0
+            is_node_cyclic = any(path in scc for scc in sccs)
+            
             graph_nodes.append({
                 "id": path,
                 "data": {
@@ -1481,9 +1521,12 @@ async def analyze_project(request: ProjectRequest):
                     "functionCount": len(info["functions"]),
                     "lineCount": info["line_count"],
                     "maxComplexity": max_cx,
+                    "is_cyclic": is_node_cyclic
                 },
             })
-        
+
+
+
         graph_edges = []
         edge_id = 0
         for source_path, deps in file_deps.items():
@@ -1496,6 +1539,8 @@ async def analyze_project(request: ProjectRequest):
                             called_funcs.append(func_name)
                 
                 edge_id += 1
+                is_cyclic = any(source_path in scc and target_path in scc for scc in sccs)
+                
                 graph_edges.append({
                     "id": f"e{edge_id}",
                     "source": source_path,
@@ -1503,6 +1548,7 @@ async def analyze_project(request: ProjectRequest):
                     "data": {
                         "functions": called_funcs,
                         "label": ", ".join(called_funcs) if called_funcs else "imports",
+                        "is_cyclic": is_cyclic
                     },
                 })
         

@@ -688,23 +688,37 @@ const getLayoutedElements = (nodes, edges) => {
 // 3. FUNCTION DEPENDENCY GRAPH
 // ===========================================
 const FuncDepNode = ({ data }) => {
-  const cx = data.complexity || 0;
+  const cx = data.maxComplexity || data.complexity || 0;
+  const isCyclic = !!data.is_cyclic;
   const borderColor = cx <= 5 ? '#4caf50' : cx <= 10 ? '#ff9800' : '#f44336';
+  const activeColor = isCyclic ? '#f44336' : borderColor;
+
   return (
     <div style={{
       padding: '12px 20px', borderRadius: '12px',
-      border: `2px solid ${borderColor}`,
-      background: `linear-gradient(135deg, ${borderColor}11, #1e1e1e)`,
+      border: `2px solid ${activeColor}`,
+      background: `linear-gradient(135deg, ${activeColor}11, #1e1e1e)`,
       color: '#e0e0e0', fontSize: '0.85rem', fontFamily: 'monospace',
       textAlign: 'center', cursor: 'pointer', minWidth: '120px',
-      transition: 'all 0.2s', boxShadow: `0 2px 12px ${borderColor}22`,
+      transition: 'all 0.2s', boxShadow: `0 2px 12px ${activeColor}22`,
+      position: 'relative'
     }}>
-      <Handle type="target" position={Position.Top} style={{ background: borderColor, width: 8, height: 8 }} />
+      {isCyclic && (
+        <div style={{
+          position: 'absolute', top: -10, right: -10, background: '#f44336', color: '#fff',
+          borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', fontSize: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+          zIndex: 10
+        }} title="Circular Dependency Detected">
+          ⚠️
+        </div>
+      )}
+      <Handle type="target" position={Position.Top} style={{ background: activeColor, width: 8, height: 8 }} />
       <div style={{ fontWeight: 700, marginBottom: '2px' }}>{data.label}</div>
-      <div style={{ fontSize: '0.6rem', color: borderColor, fontWeight: 600 }}>
+      <div style={{ fontSize: '0.6rem', color: activeColor, fontWeight: 600 }}>
         complexity: {cx}
       </div>
-      <Handle type="source" position={Position.Bottom} style={{ background: borderColor, width: 8, height: 8 }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: activeColor, width: 8, height: 8 }} />
     </div>
   );
 };
@@ -733,15 +747,22 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
 
   // Style edges
   const styleEdges = useCallback((depEdges) => {
-    return depEdges.map(e => ({
-      ...e,
-      animated: true,
-      style: { stroke: '#7c4dff', strokeWidth: 2, opacity: 0.7 },
-      markerEnd: { type: 'arrowclosed', color: '#7c4dff' },
-      label: 'calls',
-      labelStyle: { fill: '#888', fontSize: '0.6rem' },
-      labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
-    }));
+    return depEdges.map(e => {
+      const isCyclic = !!e.data?.is_cyclic;
+      const strokeColor = isCyclic ? '#f44336' : '#7c4dff';
+      const strokeWidth = isCyclic ? 3 : 2;
+      const opacity = isCyclic ? 1 : 0.7;
+
+      return {
+        ...e,
+        animated: true,
+        style: { stroke: strokeColor, strokeWidth, opacity },
+        markerEnd: { type: 'arrowclosed', color: strokeColor },
+        label: isCyclic ? '⚠️ cycle' : (e.data?.label || 'calls'),
+        labelStyle: { fill: isCyclic ? '#f44336' : '#888', fontSize: '0.6rem', fontWeight: isCyclic ? 'bold' : 'normal' },
+        labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
+      };
+    });
   }, []);
 
   useEffect(() => {
@@ -1229,7 +1250,7 @@ const fileDepGraphNodeTypes = {
   fileNode: FileDepNode
 };
 
-const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory, crossFileData }) => {
+const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory, crossFileData, onNodeDoubleClick }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [hoveredNode, setHoveredNode] = useState(null);
@@ -1504,7 +1525,8 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
           onNodeDragStop={onNodeDragStop}
           onNodeMouseEnter={handleNodeMouseEnter}
           onNodeMouseLeave={handleNodeMouseLeave}
-          nodeTypes={nodeTypes}
+          onNodeDoubleClick={(e, node) => onNodeDoubleClick?.(e, node)}
+          nodeTypes={fileDepGraphNodeTypes}
           fitView
           fitViewOptions={{ padding: 0.3 }}
         >
@@ -1625,6 +1647,51 @@ const NewApp = () => {
   const [blueprintData, setBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
   const [blueprintLoading, setBlueprintLoading] = useState(false);
 
+  // Compute blueprint insights
+  const blueprintInsights = useMemo(() => {
+    if (!blueprintData?.dep_graph) return null;
+    const { nodes, edges } = blueprintData.dep_graph;
+
+    const importedByCount = {};
+    const importsCount = {};
+
+    nodes.forEach(n => {
+      importedByCount[n.id] = 0;
+      importsCount[n.id] = 0;
+    });
+
+    edges.forEach(e => {
+      if (importedByCount[e.target] !== undefined) importedByCount[e.target]++;
+      if (importsCount[e.source] !== undefined) importsCount[e.source]++;
+    });
+
+    let mostImported = null;
+    let maxCount = -1;
+    let isolatedCount = 0;
+
+    nodes.forEach(n => {
+      const inCount = importedByCount[n.id];
+      const outCount = importsCount[n.id];
+
+      if (inCount > maxCount) {
+        maxCount = inCount;
+        mostImported = { file: n.data?.label || n.id, count: inCount };
+      }
+
+      if (inCount === 0 && outCount === 0) {
+        isolatedCount++;
+      }
+    });
+
+    const cyclesCount = nodes.filter(n => n.data?.is_cyclic).length;
+
+    return {
+      mostImported: maxCount > 0 ? mostImported : null,
+      isolatedCount,
+      cyclesCount
+    };
+  }, [blueprintData]);
+
   // 3. GITHUB STATE
   const [repoInput, setRepoInput] = useState(() => localStorage.getItem('lastRepoInput') || '');
   useEffect(() => {
@@ -1669,7 +1736,7 @@ const NewApp = () => {
   const handleGithubFileSelect = async (filePath, node) => {
     if (!githubRepoInfo || !node?._ghPath) return;
     setGithubSelectedFile(filePath);
-    setGithubLoadingFile(filePath);
+    setGithubLoadingFile(true);
     setAnalysisResult(null);
     setCurrentFunc(null);
     try {
@@ -2565,6 +2632,34 @@ const NewApp = () => {
               </div>
             )}
 
+            {/* Health Insights */}
+            {blueprintInsights && (
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {blueprintInsights.cyclesCount > 0 && (
+                    <div style={{ background: "#f4433615", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #f44336", fontSize: "0.75rem", color: "#ffcdd2" }}>
+                      <span style={{ fontWeight: "bold" }}>⚠️ {blueprintInsights.cyclesCount} files</span> in import cycles
+                    </div>
+                  )}
+                  {blueprintInsights.mostImported && (
+                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #7c4dff", fontSize: "0.75rem", color: "#ccc" }}>
+                      <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
+                      {blueprintInsights.mostImported.file} ({blueprintInsights.mostImported.count} imports)
+                    </div>
+                  )}
+                  {blueprintInsights.isolatedCount > 0 && (
+                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
+                      <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {blueprintInsights.isolatedCount}
+                    </div>
+                  )}
+                  {!blueprintInsights.cyclesCount && !blueprintInsights.mostImported && !blueprintInsights.isolatedCount > 0 && (
+                    <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>No special insights detected.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* File List */}
             {blueprintData?.file_info && (
               <div style={{ padding: "8px 12px", flex: 1, overflowY: "auto" }}>
@@ -2718,6 +2813,41 @@ const NewApp = () => {
 
         {/* CANVAS */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden", display: "flex" }}>
+          {/* FILE DEPENDENCY MAP - Explorer only */}
+          {viewMode === "fileMap" && sidebarView === "explorer" && (
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+              <FileDepGraph
+                dependencies={dependencies}
+                fileTree={fileTree}
+                selectedFile={selectedFilePath}
+                onFileSelect={handleFileSelect}
+                graphMemory={graphMemory}
+                setGraphMemory={setGraphMemory}
+                crossFileData={crossFileData}
+                onNodeDoubleClick={(_, node) => {
+                  setSidebarView("explorer");
+                  handleFileSelect(node.id, null);
+                  // Small timeout to allow state to settle before analyzing
+                  setTimeout(() => handleAnalyze(), 100);
+                }}
+              />
+            </div>
+          )}
+
+          {/* FILE DEPENDENCY MAP - GitHub */}
+          {viewMode === "fileMap" && sidebarView === "github" && (
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+              <FileDepGraph
+                dependencies={githubDependencies}
+                fileTree={githubTree || { type: 'folder', name: 'root', children: {} }}
+                selectedFile={githubSelectedFile}
+                onFileSelect={(path) => { setGithubSelectedFile(path); }}
+                graphMemory={graphMemory}
+                setGraphMemory={setGraphMemory}
+              />
+            </div>
+          )}
+
           {(viewMode === "code" || viewMode === "split") && (
             <div style={{ flex: viewMode === "split" ? `0 0 ${codePaneWidth}%` : "1", borderRight: "none", height: "100%" }}>
               <textarea
@@ -2749,9 +2879,9 @@ const NewApp = () => {
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
               {loading || blueprintLoading ? (
                 <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : "Analyzing..."}</div>
-              ) : sidebarView === "blueprint" && blueprintDepData ? (
+              ) : sidebarView === "blueprint" && blueprintData?.dep_graph ? (
                 <FuncDepGraph
-                  depData={blueprintDepData}
+                  depData={blueprintData.dep_graph}
                   onFuncClick={(fileId) => setBlueprintSelectedFile(fileId)}
                   graphMemory={graphMemory}
                   setGraphMemory={setGraphMemory}
@@ -2791,35 +2921,6 @@ const NewApp = () => {
               )}
             </div>
           )}
-
-          {/* FILE DEPENDENCY MAP - Explorer only */}
-          {viewMode === "fileMap" && sidebarView === "explorer" && (
-            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
-              <FileDepGraph
-                dependencies={dependencies}
-                fileTree={fileTree}
-                selectedFile={selectedFilePath}
-                onFileSelect={handleFileSelect}
-                graphMemory={graphMemory}
-                setGraphMemory={setGraphMemory}
-                crossFileData={crossFileData}
-              />
-            </div>
-          )}
-
-          {/* FILE DEPENDENCY MAP - GitHub */}
-          {viewMode === "fileMap" && sidebarView === "github" && (
-            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
-              <FileDepGraph
-                dependencies={githubDependencies}
-                fileTree={githubTree || { type: 'folder', name: 'root', children: {} }}
-                selectedFile={githubSelectedFile}
-                onFileSelect={(path) => { setGithubSelectedFile(path); }}
-                graphMemory={graphMemory}
-                setGraphMemory={setGraphMemory}
-              />
-            </div>
-          )}
         </div>
       </div>
 
@@ -2844,9 +2945,44 @@ const NewApp = () => {
         </div>
 
         {sidebarView === 'blueprint' ? (
-          <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
-            Select a file in the blueprint file tree to view its metrics and dependencies.
-          </div>
+          blueprintSelectedFile && blueprintData?.file_info?.[blueprintSelectedFile] ? (
+            <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "12px", flex: 1, minHeight: 0, overflow: "hidden" }}>
+              <div style={{ fontSize: "0.85rem", color: "#d4d4d4", fontWeight: "bold", wordBreak: "break-all" }}>
+                <FileCode size={14} color="#b388ff" style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                {blueprintSelectedFile.split('/').pop()}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #ff9800" }}>
+                  <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imports (Out)</div>
+                  <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
+                    {blueprintData.dep_graph?.edges?.filter(e => e.source === blueprintSelectedFile).length || 0}
+                  </div>
+                </div>
+                <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #00bcd4" }}>
+                  <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imported By (In)</div>
+                  <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
+                    {blueprintData.dep_graph?.edges?.filter(e => e.target === blueprintSelectedFile).length || 0}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "6px" }}>Code Preview ({blueprintData.file_info[blueprintSelectedFile].functions.length} functions)</div>
+                <pre style={{
+                  margin: 0, padding: "10px", background: "#1e1e1e", borderRadius: "6px",
+                  color: "#d4d4d4", fontSize: "0.75rem", overflowY: "auto", flex: 1,
+                  border: "1px solid #333", whiteSpace: "pre-wrap"
+                }}>
+                  {getFileContent(blueprintTree, blueprintSelectedFile) || "No code available."}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+              Select a file in the blueprint file tree to view its metrics and code.
+            </div>
+          )
         ) : !analysisResult ? (
           <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
             Analyze code to see insights here.
