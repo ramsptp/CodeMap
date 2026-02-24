@@ -479,6 +479,70 @@ class JavaFlowBuilder(ReactFlowBuilder):
             node = self.add_node(label, "terminator")
             return node, node, True
         
+        # TRY STATEMENT
+        elif stmt.startswith("try"):
+            try_node = self.add_node("Try", "process")
+            merge = self.add_node("", "process")
+            
+            def extract_block(keyword, text, start_idx=0):
+                idx = text.find(keyword, start_idx)
+                if idx == -1: return None, -1, ""
+                brace_start = text.find("{", idx)
+                if brace_start == -1: return None, -1, ""
+                brace_count = 1
+                for i in range(brace_start + 1, len(text)):
+                    if text[i] == '{': brace_count += 1
+                    elif text[i] == '}': 
+                        brace_count -= 1
+                        if brace_count == 0:
+                            condition = ""
+                            if keyword == "catch":
+                                cond_match = re.search(r"\((.*?)\)", text[idx:brace_start])
+                                if cond_match: condition = cond_match.group(1)
+                            return condition, i + 1, text[brace_start+1:i].strip()
+                return None, -1, ""
+
+            _, next_idx, try_content = extract_block("try", stmt)
+            
+            t_entry = t_exit = None
+            t_term = False
+            if try_content:
+                t_stmts = parse_java_structure(try_content)
+                t_entry, t_exit, t_term = self._process_block(t_stmts)
+            
+            if t_entry: self.add_edge(try_node, t_entry)
+            if t_exit and not t_term: self.add_edge(t_exit, merge)
+            elif not t_entry: self.add_edge(try_node, merge)
+            
+            while next_idx != -1:
+                cond, idx, catch_content = extract_block("catch", stmt, next_idx)
+                if idx == -1: break
+                next_idx = idx
+                
+                catch_node = self.add_node(f"catch ({cond})", "decision")
+                self.add_edge(try_node, catch_node, "Error")
+                
+                c_entry = c_exit = None
+                c_term = False
+                if catch_content:
+                    c_stmts = parse_java_structure(catch_content)
+                    c_entry, c_exit, c_term = self._process_block(c_stmts)
+                
+                if c_entry: self.add_edge(catch_node, c_entry)
+                if c_exit and not c_term: self.add_edge(c_exit, merge)
+                elif not c_entry: self.add_edge(catch_node, merge)
+            
+            _, _, finally_content = extract_block("finally", stmt)
+            if finally_content:
+                f_entry = f_exit = None
+                f_term = False
+                f_stmts = parse_java_structure(finally_content)
+                f_entry, f_exit, f_term = self._process_block(f_stmts)
+                if f_entry: self.add_edge(merge, f_entry)
+                return try_node, f_exit if f_exit else merge, f_term
+
+            return try_node, merge, False
+        
         # REGULAR STATEMENT
         else:
             label = stmt.strip()
@@ -681,6 +745,67 @@ class JavaScriptFlowBuilder(ReactFlowBuilder):
             elif not f_entry: self.add_edge(decision, merge, "False", sourceHandle="bottom")
             
             return decision, merge, False
+
+        # TRY STATEMENT
+        elif stmt.startswith("try"):
+            try_node = self.add_node("Try", "process")
+            merge = self.add_node("", "process")
+            
+            def extract_block(keyword, text, start_idx=0):
+                idx = text.find(keyword, start_idx)
+                if idx == -1: return None, -1, ""
+                brace_start = text.find("{", idx)
+                if brace_start == -1: return None, -1, ""
+                brace_count = 1
+                for i in range(brace_start + 1, len(text)):
+                    if text[i] == '{': brace_count += 1
+                    elif text[i] == '}': 
+                        brace_count -= 1
+                        if brace_count == 0:
+                            condition = ""
+                            if keyword == "catch":
+                                cond_match = re.search(r"\((.*?)\)", text[idx:brace_start])
+                                if cond_match: condition = cond_match.group(1)
+                            return condition, i + 1, text[brace_start+1:i].strip()
+                return None, -1, ""
+
+            _, next_idx, try_content = extract_block("try", stmt)
+            
+            t_entry = t_exit = t_term = None
+            if try_content:
+                t_stmts = parse_java_structure(try_content)
+                t_entry, t_exit, t_term = self.process_block(t_stmts, loop_context)
+            
+            if t_entry: self.add_edge(try_node, t_entry)
+            if t_exit and not t_term: self.add_edge(t_exit, merge)
+            elif not t_entry: self.add_edge(try_node, merge)
+            
+            while next_idx != -1:
+                cond, idx, catch_content = extract_block("catch", stmt, next_idx)
+                if idx == -1: break
+                next_idx = idx
+                
+                catch_node = self.add_node(f"catch ({cond})", "decision")
+                self.add_edge(try_node, catch_node, "Error")
+                
+                c_entry = c_exit = c_term = None
+                if catch_content:
+                    c_stmts = parse_java_structure(catch_content)
+                    c_entry, c_exit, c_term = self.process_block(c_stmts, loop_context)
+                
+                if c_entry: self.add_edge(catch_node, c_entry)
+                if c_exit and not c_term: self.add_edge(c_exit, merge)
+                elif not c_entry: self.add_edge(catch_node, merge)
+            
+            _, _, finally_content = extract_block("finally", stmt)
+            if finally_content:
+                f_entry = f_exit = f_term = None
+                f_stmts = parse_java_structure(finally_content)
+                f_entry, f_exit, f_term = self.process_block(f_stmts, loop_context)
+                if f_entry: self.add_edge(merge, f_entry)
+                return try_node, f_exit if f_exit else merge, f_term
+
+            return try_node, merge, False
 
         # RETURN
         elif stmt.startswith("return"):
@@ -1134,6 +1259,7 @@ async def analyze_code(request: CodeRequest):
                     "data": {
                         "label": fname + "()",
                         "complexity": cx,
+                        "language": lang
                     },
                     "type": "funcDep",
                 })

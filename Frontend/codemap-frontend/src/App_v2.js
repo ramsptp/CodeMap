@@ -691,6 +691,9 @@ const FuncDepNode = ({ data }) => {
   const cx = data.maxComplexity || data.complexity || 0;
   const isCyclic = !!data.is_cyclic;
   const lang = data.language || 'python';
+  const stats = data.stats;
+
+  const [showTooltip, setShowTooltip] = useState(false);
 
   // Base colors mapping modeled from FileDepNode
   const langColors = {
@@ -709,15 +712,18 @@ const FuncDepNode = ({ data }) => {
   const activeColor = isCyclic ? '#f44336' : borderColor;
 
   return (
-    <div style={{
-      padding: '12px 20px', borderRadius: '12px',
-      border: `2px solid ${activeColor}`,
-      background: `linear-gradient(135deg, ${activeColor}11, #1e1e1e)`,
-      color: '#e0e0e0', fontSize: '0.85rem', fontFamily: 'monospace',
-      textAlign: 'center', cursor: 'pointer', minWidth: '120px',
-      transition: 'all 0.2s', boxShadow: `0 2px 12px ${activeColor}22`,
-      position: 'relative'
-    }}>
+    <div
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+      style={{
+        padding: '12px 20px', borderRadius: '12px',
+        border: `2px solid ${activeColor}`,
+        background: `linear-gradient(135deg, ${activeColor}11, #1e1e1e)`,
+        color: '#e0e0e0', fontSize: '0.85rem', fontFamily: 'monospace',
+        textAlign: 'center', cursor: 'pointer', minWidth: '120px',
+        transition: 'all 0.2s', boxShadow: `0 2px 12px ${activeColor}22`,
+        position: 'relative'
+      }}>
       {isCyclic && (
         <div style={{
           position: 'absolute', top: -10, right: -10, background: '#f44336', color: '#fff',
@@ -728,6 +734,36 @@ const FuncDepNode = ({ data }) => {
           ⚠️
         </div>
       )}
+
+      {/* Hover Tooltip for Connection Stats */}
+      {showTooltip && stats && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: '50%',
+          transform: 'translate(-50%, -8px)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#eee',
+          padding: '6px 10px',
+          borderRadius: '6px',
+          fontSize: '0.7rem',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          zIndex: 1000,
+          display: 'flex',
+          gap: '10px'
+        }}>
+          <span>📤 Out: {stats.imports}</span>
+          <span style={{ borderLeft: '1px solid #555', paddingLeft: '10px' }}>📥 In: {stats.importedBy}</span>
+          <div style={{
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid rgba(0,0,0,0.85)'
+          }} />
+        </div>
+      )}
+
       <Handle type="target" position={Position.Top} style={{ background: activeColor, width: 8, height: 8 }} />
       <div style={{ fontWeight: 700, marginBottom: '2px' }}>{data.label}</div>
       <div style={{ fontSize: '0.6rem', color: activeColor, fontWeight: 600 }}>
@@ -783,6 +819,30 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
   useEffect(() => {
     if (!depData || !depData.nodes || depData.nodes.length === 0) return;
 
+    // Compute imports and importedBy counts
+    const importsCount = {};
+    const importedByCount = {};
+
+    // Count edges
+    if (depData.edges) {
+      depData.edges.forEach(e => {
+        importsCount[e.source] = (importsCount[e.source] || 0) + 1;
+        importedByCount[e.target] = (importedByCount[e.target] || 0) + 1;
+      });
+    }
+
+    // Attach stats to nodes
+    const nodesWithStats = depData.nodes.map(n => ({
+      ...n,
+      data: {
+        ...n.data,
+        stats: {
+          imports: importsCount[n.id] || 0,
+          importedBy: importedByCount[n.id] || 0
+        }
+      }
+    }));
+
     const key = memoryKey || 'funcDep';
     const saved = graphMemory?.[key];
 
@@ -792,7 +852,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
       setEdges(saved.edges || styleEdges(depData.edges));
     } else {
       // Fresh dagre layout
-      const layoutedNodes = computeLayout(depData.nodes, depData.edges);
+      const layoutedNodes = computeLayout(nodesWithStats, depData.edges);
       const styledEdges = styleEdges(depData.edges);
       setNodes(layoutedNodes);
       setEdges(styledEdges);
