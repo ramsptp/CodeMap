@@ -553,9 +553,9 @@ const getLayoutedElements = (nodes, edges) => {
   // Use LR (Left-Right) for more horizontal spread
   dagreGraph.setGraph({
     rankdir: 'TB',     // Top to Bottom main flow
-    nodesep: 80,       // Increased horizontal spacing
-    ranksep: 80,       // Increased vertical spacing
-    edgesep: 40,       // Tighter edges
+    nodesep: 150,      // Significantly increased horizontal spacing to avoid overlaps
+    ranksep: 120,      // Increased vertical spacing to accommodate tall wrapping nodes
+    edgesep: 60,       // Tighter edges
     marginx: 50,
     marginy: 50
   });
@@ -578,12 +578,12 @@ const getLayoutedElements = (nodes, edges) => {
     }
     if (node.type === "process") {
       if (!node.data.label) {
-        // Invisible Merge Node
         width = 1;
         height = 1;
       } else {
-        width = 220; // Wider process nodes
-        height = 60;
+        const textLen = node.data.label.length;
+        width = Math.min(Math.max(200, textLen * 8), 350); // Dynamic width up to 350
+        height = Math.max(60, Math.ceil(textLen / 30) * 30 + 40); // Taller if text wraps
       }
     }
 
@@ -818,7 +818,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
   const computeLayout = useCallback((depNodes, depEdges) => {
     const g = new dagre.graphlib.Graph();
     g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80, marginx: 40, marginy: 40 });
+    g.setGraph({ rankdir: 'TB', nodesep: 100, ranksep: 120, marginx: 40, marginy: 40 });
 
     depNodes.forEach(n => g.setNode(n.id, { width: 160, height: 70 }));
     depEdges.forEach(e => g.setEdge(e.source, e.target));
@@ -933,10 +933,11 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             onClick={handleReset}
             title="Reset node positions"
             style={{
-              position: 'absolute', top: 10, right: 10, zIndex: 10,
+              position: 'absolute', top: 15, right: 15, zIndex: 100, // Fixed z-index to stay above ReactFlow
               background: '#333', border: '1px solid #555', borderRadius: '6px',
-              color: '#aaa', padding: '5px 10px', cursor: 'pointer',
-              fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px',
+              color: '#aaa', padding: '6px 12px', cursor: 'pointer',
+              fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
             }}
           >
             ↻ Reset Layout
@@ -1168,10 +1169,11 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         onClick={handleReset}
         title="Reset node positions"
         style={{
-          position: 'absolute', top: 10, right: 10, zIndex: 10,
+          position: 'absolute', top: 15, right: 15, zIndex: 100, // High z-index to overlay controls
           background: '#333', border: '1px solid #555', borderRadius: '6px',
-          color: '#aaa', padding: '5px 10px', cursor: 'pointer',
-          fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px',
+          color: '#aaa', padding: '6px 12px', cursor: 'pointer',
+          fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
         }}
       >
         ↻ Reset Layout
@@ -2334,6 +2336,25 @@ const NewApp = () => {
     }
   };
 
+  const blueprintDepData = useMemo(() => {
+    if (!blueprintData?.dep_graph) return null;
+    return {
+      nodes: blueprintData.dep_graph.nodes.map(n => ({
+        ...n,
+        type: 'funcDep',
+        data: {
+          label: n.data.label,
+          complexity: n.data.maxComplexity || 0,
+        }
+      })),
+      edges: blueprintData.dep_graph.edges.map(e => ({
+        ...e,
+        source: e.source,
+        target: e.target,
+      })),
+    };
+  }, [blueprintData]);
+
   // Export Graph JSON
   const handleExportGraph = () => {
     if (!analysisResult || !analysisResult.graph_data) return;
@@ -2827,23 +2848,9 @@ const NewApp = () => {
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
               {loading || blueprintLoading ? (
                 <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : "Analyzing..."}</div>
-              ) : sidebarView === "blueprint" && blueprintData?.dep_graph ? (
+              ) : sidebarView === "blueprint" && blueprintDepData ? (
                 <FuncDepGraph
-                  depData={{
-                    nodes: blueprintData.dep_graph.nodes.map(n => ({
-                      ...n,
-                      type: 'funcDep',
-                      data: {
-                        label: n.data.label,
-                        complexity: n.data.maxComplexity || 0,
-                      }
-                    })),
-                    edges: blueprintData.dep_graph.edges.map(e => ({
-                      ...e,
-                      source: e.source,
-                      target: e.target,
-                    })),
-                  }}
+                  depData={blueprintDepData}
                   onFuncClick={(fileId) => setBlueprintSelectedFile(fileId)}
                   graphMemory={graphMemory}
                   setGraphMemory={setGraphMemory}
