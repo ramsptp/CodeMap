@@ -690,7 +690,22 @@ const getLayoutedElements = (nodes, edges) => {
 const FuncDepNode = ({ data }) => {
   const cx = data.maxComplexity || data.complexity || 0;
   const isCyclic = !!data.is_cyclic;
-  const borderColor = cx <= 5 ? '#4caf50' : cx <= 10 ? '#ff9800' : '#f44336';
+  const lang = data.language || 'python';
+
+  // Base colors mapping modeled from FileDepNode
+  const langColors = {
+    python: "#2196f3", java: "#f44336", javascript: "#ffeb3b", typescript: "#2196f3", cpp: "#9c27b0", c: "#9c27b0"
+  };
+  const baseColor = langColors[lang] || "#888";
+
+  // If cyclic, force red to indicate danger. Otherwise, keep lang color. 
+  // Wait, the prompt says "python should be blue, etc". 
+  // Let's use the lang color for the node border, but keep the red badge for cyclicity.
+  // Actually, let's keep the existing logic where high complexity turns it red/orange, but base it on language otherwise.
+  let borderColor = baseColor;
+  if (cx > 10) borderColor = '#f44336';
+  else if (cx > 5) borderColor = '#ff9800';
+
   const activeColor = isCyclic ? '#f44336' : borderColor;
 
   return (
@@ -716,14 +731,14 @@ const FuncDepNode = ({ data }) => {
       <Handle type="target" position={Position.Top} style={{ background: activeColor, width: 8, height: 8 }} />
       <div style={{ fontWeight: 700, marginBottom: '2px' }}>{data.label}</div>
       <div style={{ fontSize: '0.6rem', color: activeColor, fontWeight: 600 }}>
-        complexity: {cx}
+        complexity: {cx} | {lang}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ background: activeColor, width: 8, height: 8 }} />
     </div>
   );
 };
 
-const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, nodeTypes }) => {
+const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -834,13 +849,6 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
     }
   }, [onFuncClick, setGraphMemory, memoryKey, nodes, edges]);
 
-  const handleNodeDoubleClick = useCallback((event, node) => {
-    // Check if onFuncDoubleClick prop exists (we'll pass one from App)
-    if (onFuncClick) {
-      onFuncClick(node.id, true); // true flag to indicate double-click drill-down
-    }
-  }, [onFuncClick]);
-
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       {nodes.length > 0 ? (
@@ -851,33 +859,33 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={handleNodeClick}
-            onNodeDoubleClick={handleNodeDoubleClick}
-            nodeTypes={nodeTypes || funcDepNodeTypes}
+            nodeTypes={funcDepNodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3 }}
           >
-            <Background color="#333" gap={16} />
+            <Background color="#1e1e1e" gap={20} size={1} />
             <Controls />
           </ReactFlow>
+          <button
+            onClick={handleReset}
+            title="Reset node positions"
+            style={{
+              position: 'absolute', top: 15, right: 15, zIndex: 100, // Fixed z-index to stay above ReactFlow
+              background: '#333', border: '1px solid #555', borderRadius: '6px',
+              color: '#aaa', padding: '6px 12px', cursor: 'pointer',
+              fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+            }}
+          >
+            ↻ Reset Layout
+          </button>
         </>
       ) : (
-        <div style={centerMsgStyle}>
-          <p>No function dependencies found.</p>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#555', textAlign: 'center' }}>
+          <p style={{ fontSize: '1.2rem' }}>📊 Function Dependencies</p>
+          <p style={{ fontSize: '0.8rem' }}>No dependencies detected</p>
         </div>
       )}
-      <button
-        onClick={handleReset}
-        title="Reset node positions"
-        style={{
-          position: 'absolute', top: 15, right: 15, zIndex: 100, // Fixed z-index to stay above ReactFlow
-          background: '#333', border: '1px solid #555', borderRadius: '6px',
-          color: '#aaa', padding: '6px 12px', cursor: 'pointer',
-          fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-        }}
-      >
-        ↻ Reset Layout
-      </button>
     </div>
   );
 };
@@ -1140,10 +1148,9 @@ const getFileColor = (filename) => {
 
 // Custom node for file dependency graph
 const FileDepNode = ({ data }) => {
-  const colors = data.colors || LANG_COLORS.default;
+  const colors = data.colors;
   const isSelected = data.isSelected;
   const isDimmed = data.isDimmed;
-  const isCyclic = !!data.is_cyclic;
   const stats = data.stats || { imports: 0, importedBy: 0 };
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -1180,16 +1187,6 @@ const FileDepNode = ({ data }) => {
         e.currentTarget.style.zIndex = isSelected ? 10 : 1;
       }}
     >
-      {isCyclic && (
-        <div style={{
-          position: 'absolute', top: -10, right: -10, background: '#f44336', color: '#fff',
-          borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', fontSize: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
-          zIndex: 10
-        }} title="Circular Dependency Detected">
-          ⚠️
-        </div>
-      )}
       <Handle type="target" position={Position.Top} style={{ background: colors.border, width: 8, height: 8, opacity: isDimmed ? 0.2 : 1 }} />
 
       <div style={{
@@ -1214,57 +1211,53 @@ const FileDepNode = ({ data }) => {
         {data.label}
       </div>
 
-      {
-        data.folder && (
-          <div style={{
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: '0.65rem',
-            marginTop: '4px',
-            fontStyle: 'italic',
-          }}>
-            {data.folder}
-          </div>
-        )
-      }
+      {data.folder && (
+        <div style={{
+          color: 'rgba(255,255,255,0.5)',
+          fontSize: '0.65rem',
+          marginTop: '4px',
+          fontStyle: 'italic',
+        }}>
+          {data.folder}
+        </div>
+      )}
 
       {/* Tooltip */}
-      {
-        showTooltip && !isDimmed && (
+      {showTooltip && !isDimmed && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: '50%',
+          transform: 'translate(-50%, -8px)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#eee',
+          padding: '6px 10px',
+          borderRadius: '6px',
+          fontSize: '0.7rem',
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(4px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          zIndex: 1000,
+          display: 'flex',
+          gap: '10px'
+        }}>
+          <span>📤 Imports: {stats.imports}</span>
+          <span style={{ borderLeft: '1px solid #555', paddingLeft: '10px' }}>📥 Used by: {stats.importedBy}</span>
           <div style={{
             position: 'absolute',
-            bottom: '100%',
+            top: '100%',
             left: '50%',
-            transform: 'translate(-50%, -8px)',
-            background: 'rgba(0,0,0,0.85)',
-            color: '#eee',
-            padding: '6px 10px',
-            borderRadius: '6px',
-            fontSize: '0.7rem',
-            whiteSpace: 'nowrap',
-            pointerEvents: 'none',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            zIndex: 1000,
-            display: 'flex',
-            gap: '10px'
-          }}>
-            <span>📤 Imports: {stats.imports}</span>
-            <span style={{ borderLeft: '1px solid #555', paddingLeft: '10px' }}>📥 Used by: {stats.importedBy}</span>
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderTop: '6px solid rgba(0,0,0,0.85)',
-            }} />
-          </div>
-        )
-      }
+            transform: 'translateX(-50%)',
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '6px solid rgba(0,0,0,0.85)',
+          }} />
+        </div>
+      )}
 
       <Handle type="source" position={Position.Bottom} style={{ background: colors.border, width: 8, height: 8, opacity: isDimmed ? 0.2 : 1 }} />
-    </div >
+    </div>
   );
 };
 
@@ -2112,16 +2105,40 @@ const NewApp = () => {
               content: content
             };
           }
+        } // Close for-of loop over fileData
+
+        // Auto-analyze exactly like the standalone button does
+        if (sidebarView === "blueprint") {
+          const filesArray = [];
+          for (const { path, content } of fileData) {
+            filesArray.push({ path, content });
+          }
+          if (filesArray.length > 0) {
+            setBlueprintLoading(true);
+            axios.post('http://127.0.0.1:8000/analyze-project', { files: filesArray })
+              .then(res => {
+                if (res.data && !res.data.error) {
+                  setBlueprintData(res.data);
+                } else {
+                  alert("Project analysis error: " + (res.data?.error || "Unknown"));
+                }
+              })
+              .catch(err => {
+                console.error("Analysis failed:", err);
+                alert("Failed to analyze project.");
+              })
+              .finally(() => setBlueprintLoading(false));
+          }
         }
 
         return newTree;
-      });
+      }); // Close setFileTree
 
-    } catch (error) {
+    } catch (error) { // Close try block started at handleUploadZip
       console.error('ZIP extraction failed:', error);
       alert('Failed to extract ZIP file. Make sure it\'s a valid ZIP.');
     }
-  }, []);
+  }, [sidebarView]); // Close handleUploadZip
 
   // --- EDITOR CHANGE HANDLER ---
   const handleCodeChange = (e) => {
@@ -2331,13 +2348,12 @@ const NewApp = () => {
     return {
       nodes: blueprintData.dep_graph.nodes.map(n => ({
         ...n,
-        type: 'fileNode',
+        type: 'funcDep',
         data: {
-          ...n.data,
           label: n.data.label,
-          colors: getFileColor(n.data.label),
-          stats: n.data.stats || { imports: 0, importedBy: 0 },
-          maxComplexity: n.data.maxComplexity || 0,
+          complexity: n.data.maxComplexity || 0,
+          language: n.data.language,
+          is_cyclic: n.data.is_cyclic
         }
       })),
       edges: blueprintData.dep_graph.edges.map(e => ({
@@ -2614,7 +2630,6 @@ const NewApp = () => {
                       }
 
                       setBlueprintTree(newTree);
-                      setFileTree(newTree); // Sync the uploaded project to Explorer so it can be navigated via double click
                       console.log('[Blueprint] Code files found:', projectFiles.length, projectFiles.map(f => f.path));
 
                       if (projectFiles.length > 0) {
@@ -2905,22 +2920,36 @@ const NewApp = () => {
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
               {loading || blueprintLoading ? (
                 <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : "Analyzing..."}</div>
-              ) : sidebarView === "blueprint" && blueprintDepData ? (
-                <FuncDepGraph
-                  depData={blueprintDepData}
-                  nodeTypes={{ fileNode: FileDepNode }}
-                  onFuncClick={(fileId, isDoubleClick) => {
-                    setBlueprintSelectedFile(fileId);
-                    if (isDoubleClick) {
+              ) : sidebarView === "blueprint" && blueprintData?.dep_graph ? (
+                <>
+                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
+                    <button
+                      onClick={() => setSidebarView("explorer")}
+                      style={{
+                        padding: '6px 12px', background: '#333', color: '#fff',
+                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
+                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
+                      }}
+                    >
+                      ← Back to Explorer
+                    </button>
+                  </div>
+                  <FuncDepGraph
+                    depData={blueprintDepData}
+                    onFuncClick={(fileId) => setBlueprintSelectedFile(fileId)}
+                    onNodeDoubleClick={(e, node) => {
                       setSidebarView("explorer");
-                      pendingCrossFileAnalysis.current = { filePath: fileId, funcName: null };
-                      handleFileSelect(fileId, null);
-                    }
-                  }}
-                  graphMemory={graphMemory}
-                  setGraphMemory={setGraphMemory}
-                  memoryKey="blueprint:depGraph"
-                />
+                      // Find the full path that matches this file name
+                      // node.id is the full path from the backend
+                      handleFileSelect(node.id, null);
+                      // Trigger analysis on that file so the flowchart appears
+                      setTimeout(() => handleAnalyze(), 100);
+                    }}
+                    graphMemory={graphMemory}
+                    setGraphMemory={setGraphMemory}
+                    memoryKey="blueprint:depGraph"
+                  />
+                </>
               ) : sidebarView === "blueprint" ? (
                 <div style={centerMsgStyle}>
                   <p>🏗️ Project Blueprint</p>
