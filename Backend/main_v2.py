@@ -210,6 +210,43 @@ class PythonFlowBuilder(ReactFlowBuilder):
             
             return loop_node, after, False
 
+        # TRY / EXCEPT STATEMENT
+        if isinstance(stmt, ast.Try):
+            try_node = self.add_node("Try:", "process")
+            
+            # Process the try body inline (individual statements)
+            body_entry, body_exit, body_term = self.stmt_sequence(stmt.body)
+            if body_entry:
+                self.add_edge(try_node, body_entry)
+            
+            # Merge point after try body and all except handlers
+            merge = self.add_node("", "process")
+            
+            if body_exit and not body_term:
+                self.add_edge(body_exit, merge)
+            
+            # Process each except handler
+            for handler in stmt.handlers:
+                exc_label = f"except {ast.unparse(handler.type) if handler.type else 'Exception'}"
+                exc_node = self.add_node(exc_label, "decision")
+                # Connect from try_node (exception path)
+                self.add_edge(try_node, exc_node, "Error")
+                h_entry, h_exit, h_term = self.stmt_sequence(handler.body)
+                if h_entry:
+                    self.add_edge(exc_node, h_entry)
+                if h_exit and not h_term:
+                    self.add_edge(h_exit, merge)
+            
+            # Process finally block if present
+            if stmt.finalbody:
+                f_entry, f_exit, f_term = self.stmt_sequence(stmt.finalbody)
+                if f_entry:
+                    self.add_edge(merge, f_entry)
+                return try_node, f_exit if f_exit else merge, f_term
+            
+            return try_node, merge, False
+
+
         # REGULAR STATEMENT
         try:
             label = ast.unparse(stmt)
@@ -1317,3 +1354,179 @@ Code:
     except Exception as e:
         logger.error(f"Gemini explain failed: {str(e)}")
         return {"error": f"AI explanation failed: {str(e)}"}
+
+
+# ==========================================
+# 11. PROJECT BLUEPRINT — BATCH ANALYSIS
+# ==========================================
+
+class ProjectFile(BaseModel):
+    path: str
+    content: str
+    language: Optional[str] = None
+
+class ProjectRequest(BaseModel):
+    files: list[ProjectFile]
+
+
+def detect_language(path: str) -> Optional[str]:
+    """Detect language from file extension."""
+    ext_map = {
+        '.py': 'python', '.java': 'java',
+        '.js': 'javascript', '.jsx': 'javascript',
+        '.ts': 'typescript', '.tsx': 'typescript',
+        '.cpp': 'cpp', '.cc': 'cpp', '.c': 'c',
+        '.h': 'cpp', '.hpp': 'cpp',
+        '.cs': 'csharp', '.rb': 'ruby',
+        '.go': 'go', '.rs': 'rust',
+        '.kt': 'kotlin', '.swift': 'swift',
+    }
+    for ext, lang in ext_map.items():
+        if path.lower().endswith(ext):
+            return lang
+    return None
+
+
+@app.post("/analyze-project")
+async def analyze_project(request: ProjectRequest):
+    """Batch-analyze all files in a project and return file relationships."""
+    
+    file_info = {}   # path -> { language, functions, line_count, complexity }
+    
+    try:
+        # Analyze each file for functions and metadata
+        for f in request.files:
+            lang = f.language or detect_language(f.path)
+            if not lang:
+                continue
+            
+            funcs = []
+            complexity = {}
+            
+            try:
+                if lang == "python":
+                    tree = ast.parse(f.content)
+                    func_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+                    funcs = [fn.name for fn in func_nodes]
+                    complexity = {fn.name: calculate_python_complexity(fn) for fn in func_nodes}
+                elif lang == "java":
+                    methods = extract_java_methods(f.content)
+                    funcs = [m["name"] for m in methods]
+                elif lang in ["javascript", "typescript"]:
+                    jsfuncs = extract_js_functions(f.content)
+                    funcs = [fn["name"] for fn in jsfuncs]
+                elif lang in ["cpp", "c"]:
+                    cfuncs = extract_cpp_methods(f.content)
+                    funcs = [fn["name"] for fn in cfuncs]
+            except Exception:
+                pass
+            
+            file_info[f.path] = {
+                "language": lang,
+                "functions": funcs,
+                "line_count": f.content.count('\n') + 1,
+                "complexity": complexity,
+            }
+        
+        # Cross-file dependency analysis (inlined from analyze_multi)
+        symbols = {}   # path -> [function names defined]
+        resolved = {}  # path -> { callName: sourceFilePath }
+        file_deps = {} # path -> [imported file paths]
+        
+        # Pass 1: Extract symbols
+        for f in request.files:
+            lang = f.language or detect_language(f.path)
+            if not lang:
+                continue
+            syms = extract_symbols(f.content, lang)
+            symbols[f.path] = syms
+        
+        # Build reverse lookup
+        symbol_lookup = {}
+        for path, syms in symbols.items():
+            for sym in syms:
+                if sym not in symbol_lookup:
+                    symbol_lookup[sym] = path
+        
+        # Pass 2: Resolve calls
+        for f in request.files:
+            lang = f.language or detect_language(f.path)
+            if not lang:
+                continue
+            calls_list = extract_function_calls(f.content, lang)
+            resolved_calls = {}
+            deps = set()
+            for call_name in calls_list:
+                source_file = symbol_lookup.get(call_name)
+                if source_file and source_file != f.path:
+                    resolved_calls[call_name] = source_file
+                    deps.add(source_file)
+            if resolved_calls:
+                resolved[f.path] = resolved_calls
+            if deps:
+                file_deps[f.path] = list(deps)
+        
+        calls = resolved
+        
+        # Build graph nodes and edges for the frontend
+        graph_nodes = []
+        for path, info in file_info.items():
+            filename = path.split('/')[-1] if '/' in path else path.split('\\')[-1] if '\\' in path else path
+            max_cx = max(info["complexity"].values()) if info["complexity"] else 0
+            graph_nodes.append({
+                "id": path,
+                "data": {
+                    "label": filename,
+                    "language": info["language"],
+                    "functions": info["functions"],
+                    "functionCount": len(info["functions"]),
+                    "lineCount": info["line_count"],
+                    "maxComplexity": max_cx,
+                },
+            })
+        
+        graph_edges = []
+        edge_id = 0
+        for source_path, deps in file_deps.items():
+            for target_path in deps:
+                # Find which functions are called
+                called_funcs = []
+                if source_path in calls:
+                    for func_name, src_file in calls[source_path].items():
+                        if src_file == target_path:
+                            called_funcs.append(func_name)
+                
+                edge_id += 1
+                graph_edges.append({
+                    "id": f"e{edge_id}",
+                    "source": source_path,
+                    "target": target_path,
+                    "data": {
+                        "functions": called_funcs,
+                        "label": ", ".join(called_funcs) if called_funcs else "imports",
+                    },
+                })
+        
+        # Project-level stats
+        total_files = len(file_info)
+        total_functions = sum(len(info["functions"]) for info in file_info.values())
+        total_lines = sum(info["line_count"] for info in file_info.values())
+        languages = list(set(info["language"] for info in file_info.values()))
+        
+        return {
+            "file_info": file_info,
+            "dep_graph": {
+                "nodes": graph_nodes,
+                "edges": graph_edges,
+            },
+            "project_stats": {
+                "total_files": total_files,
+                "total_functions": total_functions,
+                "total_lines": total_lines,
+                "languages": languages,
+            },
+        }
+    
+    except Exception as e:
+        logger.error(f"Project analysis failed: {str(e)}")
+        return {"error": str(e)}

@@ -17,7 +17,7 @@ import {
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
   Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
-  AlertTriangle, CheckCircle, Info, Zap, Image
+  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
@@ -1716,6 +1716,12 @@ const NewApp = () => {
   const [loading, setLoading] = useState(false);
   const [analysisCache, setAnalysisCache] = useState({}); // filePath -> { result, func }
 
+  // Project Blueprint state
+  const [blueprintTree, setBlueprintTree] = useState(null);
+  const [blueprintSelectedFile, setBlueprintSelectedFile] = useState(null);
+  const [blueprintData, setBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
+  const [blueprintLoading, setBlueprintLoading] = useState(false);
+
   // 3. GITHUB STATE
   const [repoInput, setRepoInput] = useState(() => localStorage.getItem('lastRepoInput') || '');
   useEffect(() => {
@@ -2381,6 +2387,14 @@ const NewApp = () => {
           <Github size={24} color={sidebarView === "github" ? "#fff" : "#777"} />
         </div>
 
+        <div
+          onClick={() => setSidebarView("blueprint")}
+          style={{ cursor: "pointer", borderLeft: sidebarView === "blueprint" ? "2px solid #7c4dff" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
+          title="Project Blueprint"
+        >
+          <LayoutDashboard size={24} color={sidebarView === "blueprint" ? "#b388ff" : "#777"} />
+        </div>
+
         <Settings size={24} color="#777" style={{ marginTop: "auto", cursor: "pointer" }} />
       </div>
 
@@ -2526,6 +2540,145 @@ const NewApp = () => {
             />
           </>
         )}
+
+        {/* VIEW D: PROJECT BLUEPRINT */}
+        {sidebarView === "blueprint" && (
+          <>
+            <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
+              <LayoutDashboard size={14} color="#7c4dff" /> Project Blueprint
+            </div>
+
+            {/* Upload Area */}
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+              <label style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                padding: "10px", border: "2px dashed #7c4dff44", borderRadius: "8px",
+                cursor: "pointer", color: "#b388ff", fontSize: "0.78rem", fontWeight: 600,
+                background: "#7c4dff08", transition: "all 0.2s",
+              }}>
+                <FolderOpen size={16} />
+                {blueprintLoading ? "Analyzing..." : "Upload Project (ZIP)"}
+                <input
+                  type="file"
+                  accept=".zip"
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    e.target.value = '';
+
+                    setBlueprintLoading(true);
+                    setBlueprintData(null);
+
+                    try {
+                      const JSZip = (await import('jszip')).default;
+                      const zip = await JSZip.loadAsync(file);
+                      const codeExts = ['.py', '.java', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.cc', '.c', '.h', '.hpp', '.cs', '.rb', '.go', '.rs', '.kt', '.swift'];
+                      const newTree = { type: 'folder', name: file.name.replace('.zip', ''), children: {} };
+                      const projectFiles = [];
+
+                      for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+                        if (zipEntry.dir) continue;
+                        const isCode = codeExts.some(ext => relativePath.toLowerCase().endsWith(ext));
+                        const content = isCode ? await zipEntry.async('string') : '';
+
+                        // Build tree
+                        const pathParts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+                        let current = newTree;
+                        for (let i = 0; i < pathParts.length - 1; i++) {
+                          if (!current.children[pathParts[i]]) {
+                            current.children[pathParts[i]] = { type: 'folder', name: pathParts[i], children: {} };
+                          }
+                          current = current.children[pathParts[i]];
+                        }
+                        const fileName = pathParts[pathParts.length - 1];
+                        current.children[fileName] = { type: 'file', name: fileName, content };
+
+                        if (isCode) {
+                          projectFiles.push({ path: relativePath, content });
+                        }
+                      }
+
+                      setBlueprintTree(newTree);
+                      console.log('[Blueprint] Code files found:', projectFiles.length, projectFiles.map(f => f.path));
+
+                      if (projectFiles.length > 0) {
+                        const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
+                        console.log('[Blueprint] API response:', res.status, JSON.stringify(res.data).slice(0, 300));
+                        if (!res.data.error) {
+                          setBlueprintData(res.data);
+                          console.log('[Blueprint] Data set, nodes:', res.data.dep_graph?.nodes?.length);
+                        } else {
+                          console.error('[Blueprint] API error:', res.data.error);
+                        }
+                      }
+                    } catch (err) {
+                      console.error('Blueprint upload failed:', err);
+                      alert('Failed to process project ZIP.');
+                    } finally {
+                      setBlueprintLoading(false);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            {/* Project Stats */}
+            {blueprintData?.project_stats && (
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                  {[
+                    { label: "Files", value: blueprintData.project_stats.total_files, color: "#4caf50" },
+                    { label: "Functions", value: blueprintData.project_stats.total_functions, color: "#ff9800" },
+                    { label: "Lines", value: blueprintData.project_stats.total_lines, color: "#00bcd4" },
+                    { label: "Languages", value: blueprintData.project_stats.languages.length, color: "#e040fb" },
+                  ].map((s, i) => (
+                    <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* File List */}
+            {blueprintData?.file_info && (
+              <div style={{ padding: "8px 12px", flex: 1, overflowY: "auto" }}>
+                <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Files</div>
+                {Object.entries(blueprintData.file_info).map(([path, info]) => {
+                  const filename = path.split('/').pop() || path;
+                  const isSelected = blueprintSelectedFile === path;
+                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                  return (
+                    <div
+                      key={path}
+                      onClick={() => setBlueprintSelectedFile(path)}
+                      style={{
+                        padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                        background: isSelected ? "#2a2d2e" : "transparent",
+                        borderLeft: `2px solid ${isSelected ? "#7c4dff" : "transparent"}`,
+                        display: "flex", alignItems: "center", gap: "6px",
+                        fontSize: "0.75rem", color: isSelected ? "#fff" : "#aaa",
+                      }}
+                    >
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
+                      <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
+                      <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!blueprintData && !blueprintLoading && (
+              <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.78rem", fontStyle: "italic" }}>
+                Upload a project ZIP to see its architecture.
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* SIDEBAR DIVIDER */}
@@ -2555,6 +2708,10 @@ const NewApp = () => {
             ) : sidebarView === "github" ? (
               <span style={{ fontWeight: "bold", color: "#c9d1d9" }}>
                 {githubSelectedFile ? githubSelectedFile.split('/').pop() : (githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : 'GitHub')}
+              </span>
+            ) : sidebarView === "blueprint" ? (
+              <span style={{ fontWeight: "bold", color: "#b388ff" }}>
+                {blueprintData ? (blueprintTree?.name || 'Project Blueprint') : 'Project Blueprint'}
               </span>
             ) : (
               <span style={{ fontWeight: "bold", color: "#f89820" }}>Snippet: {activeSnippet ? activeSnippet.name : 'None'}</span>
@@ -2666,10 +2823,37 @@ const NewApp = () => {
             </div>
           )}
 
-          {(viewMode === "graph" || viewMode === "split") && (
+          {(viewMode === "graph" || viewMode === "split" || sidebarView === "blueprint") && (
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
-              {loading ? (
-                <div style={centerMsgStyle}>Analyzing...</div>
+              {loading || blueprintLoading ? (
+                <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : "Analyzing..."}</div>
+              ) : sidebarView === "blueprint" && blueprintData?.dep_graph ? (
+                <FuncDepGraph
+                  depData={{
+                    nodes: blueprintData.dep_graph.nodes.map(n => ({
+                      ...n,
+                      type: 'funcDep',
+                      data: {
+                        label: n.data.label,
+                        complexity: n.data.maxComplexity || 0,
+                      }
+                    })),
+                    edges: blueprintData.dep_graph.edges.map(e => ({
+                      ...e,
+                      source: e.source,
+                      target: e.target,
+                    })),
+                  }}
+                  onFuncClick={(fileId) => setBlueprintSelectedFile(fileId)}
+                  graphMemory={graphMemory}
+                  setGraphMemory={setGraphMemory}
+                  memoryKey="blueprint:depGraph"
+                />
+              ) : sidebarView === "blueprint" ? (
+                <div style={centerMsgStyle}>
+                  <p>🏗️ Project Blueprint</p>
+                  <p style={{ fontSize: "0.8rem" }}>Upload a project ZIP to see its architecture.</p>
+                </div>
               ) : analysisResult && analysisResult.func_dep_graph && !currentFunc ? (
                 <FuncDepGraph
                   depData={analysisResult.func_dep_graph}
