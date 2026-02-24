@@ -738,7 +738,7 @@ const FuncDepNode = ({ data }) => {
   );
 };
 
-const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey }) => {
+const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, onNodeDoubleClick }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -859,6 +859,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={handleNodeClick}
+            onNodeDoubleClick={(e, node) => onNodeDoubleClick?.(e, node)}
             nodeTypes={funcDepNodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3 }}
@@ -1658,9 +1659,10 @@ const NewApp = () => {
 
   // Project Blueprint state
   const [blueprintTree, setBlueprintTree] = useState(null);
-  const [blueprintSelectedFile, setBlueprintSelectedFile] = useState(null);
-  const [blueprintData, setBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
   const [blueprintLoading, setBlueprintLoading] = useState(false);
+  const [blueprintData, setBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
+  const [blueprintSelectedFile, setBlueprintSelectedFile] = useState(null);
+  const [blueprintFlowchartFile, setBlueprintFlowchartFile] = useState(null); // Which file is currently being drilled down into
 
   // Compute blueprint insights
   const blueprintInsights = useMemo(() => {
@@ -2278,6 +2280,20 @@ const NewApp = () => {
       else if (fn.endsWith('.cpp') || fn.endsWith('.cc')) langToSend = 'cpp';
       else if (fn.endsWith('.c')) langToSend = 'c';
 
+    } else if (sidebarView === "blueprint") {
+      const targetPath = blueprintFlowchartFile || blueprintSelectedFile;
+      if (!targetPath || !blueprintTree) return;
+      const content = getFileContent(blueprintTree, targetPath);
+      if (!content) return;
+      codeToSend = content;
+      const fn = targetPath.split('/').pop() || '';
+      if (fn.endsWith('.py')) langToSend = 'python';
+      else if (fn.endsWith('.java')) langToSend = 'java';
+      else if (fn.endsWith('.js') || fn.endsWith('.jsx')) langToSend = 'javascript';
+      else if (fn.endsWith('.ts') || fn.endsWith('.tsx')) langToSend = 'typescript';
+      else if (fn.endsWith('.cpp') || fn.endsWith('.cc')) langToSend = 'cpp';
+      else if (fn.endsWith('.c')) langToSend = 'c';
+
     } else {
       // Use active snippet's language and content
       if (!activeSnippet) return;
@@ -2312,7 +2328,9 @@ const NewApp = () => {
       setAiExplanation(null);
 
       // Cache the result
-      const cacheKey = sidebarView === 'explorer' ? selectedFilePath : `snippet-${activeSnippetId}`;
+      const cacheKey = sidebarView === 'explorer' ? selectedFilePath :
+        sidebarView === 'blueprint' ? (blueprintFlowchartFile || blueprintSelectedFile) :
+          `snippet-${activeSnippetId}`;
       if (cacheKey) {
         setAnalysisCache(prev => ({
           ...prev,
@@ -2920,34 +2938,68 @@ const NewApp = () => {
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
               {loading || blueprintLoading ? (
                 <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : "Analyzing..."}</div>
-              ) : sidebarView === "blueprint" && blueprintData?.dep_graph ? (
+              ) : sidebarView === "blueprint" && !blueprintFlowchartFile && blueprintData?.dep_graph ? (
                 <>
-                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
-                    <button
-                      onClick={() => setSidebarView("explorer")}
-                      style={{
-                        padding: '6px 12px', background: '#333', color: '#fff',
-                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
-                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
-                      }}
-                    >
-                      ← Back to Explorer
-                    </button>
-                  </div>
                   <FuncDepGraph
                     depData={blueprintDepData}
                     onFuncClick={(fileId) => setBlueprintSelectedFile(fileId)}
                     onNodeDoubleClick={(e, node) => {
-                      setSidebarView("explorer");
-                      // Find the full path that matches this file name
-                      // node.id is the full path from the backend
-                      handleFileSelect(node.id, null);
+                      console.log("Blueprint Double Click triggered for node:", node);
+                      setBlueprintFlowchartFile(node.id);
+                      setBlueprintSelectedFile(node.id);
                       // Trigger analysis on that file so the flowchart appears
                       setTimeout(() => handleAnalyze(), 100);
                     }}
                     graphMemory={graphMemory}
                     setGraphMemory={setGraphMemory}
                     memoryKey="blueprint:depGraph"
+                  />
+                </>
+              ) : sidebarView === "blueprint" && blueprintFlowchartFile && analysisResult?.func_dep_graph && !currentFunc ? (
+                <>
+                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
+                    <button
+                      onClick={() => { setBlueprintFlowchartFile(null); setAnalysisResult(null); }}
+                      style={{
+                        padding: '6px 12px', background: '#333', color: '#fff',
+                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
+                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
+                      }}
+                    >
+                      ← Back to Blueprint Map
+                    </button>
+                  </div>
+                  <FuncDepGraph
+                    depData={analysisResult.func_dep_graph}
+                    onFuncClick={(funcName) => handleAnalyze(funcName)}
+                    graphMemory={graphMemory}
+                    setGraphMemory={setGraphMemory}
+                    memoryKey={`${blueprintFlowchartFile}:funcDep`}
+                  />
+                </>
+              ) : sidebarView === "blueprint" && blueprintFlowchartFile && analysisResult?.graph_data ? (
+                <>
+                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
+                    <button
+                      onClick={() => { setBlueprintFlowchartFile(null); setAnalysisResult(null); }}
+                      style={{
+                        padding: '6px 12px', background: '#333', color: '#fff',
+                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
+                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
+                      }}
+                    >
+                      ← Back to Blueprint Map
+                    </button>
+                  </div>
+                  <FlowGraph
+                    ref={graphRef}
+                    data={analysisResult.graph_data}
+                    onNodeClick={onGraphNodeClick}
+                    graphMemory={graphMemory}
+                    setGraphMemory={setGraphMemory}
+                    memoryKey={`${blueprintFlowchartFile}:${currentFunc || 'full'}`}
+                    crossFileData={crossFileData}
+                    currentFilePath={blueprintFlowchartFile}
                   />
                 </>
               ) : sidebarView === "blueprint" ? (
