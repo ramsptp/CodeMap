@@ -3356,7 +3356,7 @@ const NewApp = () => {
                           const ext = filePath.split('.').pop()?.toLowerCase();
                           const langMap = { py: 'python', java: 'java', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', c: 'c' };
                           const lang = langMap[ext] || 'python';
-                          // We need to find the file content - it should be in the tree
+                          // Find the file content from the tree
                           const findContent = (tree, targetPath) => {
                             const parts = targetPath.split('/');
                             let current = tree;
@@ -3368,6 +3368,11 @@ const NewApp = () => {
                           };
                           const content = findContent(githubTree, filePath);
                           if (content) {
+                            // Show the code in split view
+                            setGithubFileContent(content);
+                            setGithubSelectedFile(filePath);
+                            setViewMode('split');
+                            // Analyze the file
                             setLoading(true);
                             axios.post('http://127.0.0.1:8000/analyze', { code: content, language: lang })
                               .then(res => { if (!res.data.error) setAnalysisResult(res.data); })
