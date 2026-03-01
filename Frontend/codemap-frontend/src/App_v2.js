@@ -1812,6 +1812,26 @@ const NewApp = () => {
   const [githubFileCommits, setGithubFileCommits] = useState([]); // recent commits for selected file
   const [showGithubPopup, setShowGithubPopup] = useState(false);
   const [githubQuickStats, setGithubQuickStats] = useState(null);
+  const [githubFilesHeight, setGithubFilesHeight] = useState(200);
+
+  // Drag handler for Analyzed Files section height (direction: 1 for bottom border, -1 for top border)
+  const startGithubFilesDrag = useCallback((e, direction) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = githubFilesHeight;
+
+    const handleMouseMove = (moveEvent) => {
+      const delta = moveEvent.clientY - startY;
+      const newHeight = Math.max(50, Math.min(800, startHeight + delta * direction));
+      setGithubFilesHeight(newHeight);
+    };
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [githubFilesHeight]);
 
   // Load GitHub repo
   const handleLoadRepo = async () => {
@@ -2893,74 +2913,106 @@ const NewApp = () => {
             )}
 
             {/* Recent Commits (for selected file) */}
-            {githubFileCommits.length > 0 && githubSelectedFile && (
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333", maxHeight: "220px", overflowY: "auto" }}>
-                <div style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "4px" }}>
-                  <GitBranch size={10} /> Recent Commits
-                </div>
-                {githubFileCommits.map((c, i) => (
-                  <a
-                    key={i}
-                    href={c.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "flex", alignItems: "flex-start", gap: "8px",
-                      padding: "6px 8px", marginBottom: "4px", borderRadius: "6px",
-                      background: "#1e1e1e", textDecoration: "none",
-                      transition: "background 0.15s",
+            {githubFileCommits.length > 0 && githubSelectedFile && (() => {
+              const showAll = githubFileCommits._showAll;
+              const visibleCommits = showAll ? githubFileCommits : githubFileCommits.slice(0, 3);
+              return (
+                <div style={{ padding: "8px 12px", borderBottom: "1px solid #333" }}>
+                  <div
+                    style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "4px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}
+                    onClick={() => {
+                      const updated = [...githubFileCommits];
+                      updated._showAll = !showAll;
+                      setGithubFileCommits(updated);
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = "#2a2a2a"}
-                    onMouseLeave={e => e.currentTarget.style.background = "#1e1e1e"}
                   >
-                    {c.avatar && (
-                      <img
-                        src={c.avatar}
-                        alt=""
-                        style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, marginTop: "1px" }}
-                      />
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: "0.72rem", color: "#ccc", lineHeight: "1.3",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
+                    <GitBranch size={10} /> Recent Commits
+                    <span style={{ marginLeft: "auto", color: "#666", fontSize: "0.6rem" }}>
+                      {showAll ? '▲ less' : `${githubFileCommits.length} total`}
+                    </span>
+                  </div>
+                  {visibleCommits.map((c, i) => (
+                    <a
+                      key={i}
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "flex", alignItems: "center", gap: "6px",
+                        padding: "4px 6px", marginBottom: "2px", borderRadius: "4px",
+                        background: "transparent", textDecoration: "none",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#1e1e1e"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      {c.avatar && (
+                        <img src={c.avatar} alt="" style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0 }} />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.7rem", color: "#aaa" }}>
                         {c.message}
                       </div>
-                      <div style={{ fontSize: "0.6rem", color: "#666", marginTop: "2px", display: "flex", gap: "6px" }}>
-                        <span style={{ color: "#7c4dff", fontFamily: "monospace" }}>{c.sha}</span>
-                        <span>{c.author}</span>
-                        <span>{c.date ? new Date(c.date).toLocaleDateString() : ''}</span>
-                      </div>
+                      <span style={{ fontSize: "0.55rem", color: "#555", flexShrink: 0 }}>{c.sha}</span>
+                    </a>
+                  ))}
+                  {!showAll && githubFileCommits.length > 3 && (
+                    <div
+                      onClick={() => { const updated = [...githubFileCommits]; updated._showAll = true; setGithubFileCommits(updated); }}
+                      style={{ fontSize: "0.65rem", color: "#7c4dff", cursor: "pointer", textAlign: "center", padding: "3px 0", marginTop: "2px" }}
+                    >
+                      Show {githubFileCommits.length - 3} more…
                     </div>
-                  </a>
-                ))}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
 
             {/* File List (after analysis) */}
             {githubBlueprintData?.file_info && (
-              <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", maxHeight: "200px", overflowY: "auto" }}>
-                <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Analyzed Files</div>
-                {Object.entries(githubBlueprintData.file_info).map(([path, info]) => {
-                  const filename = path.split('/').pop() || path;
-                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
-                  return (
-                    <div
-                      key={path}
-                      style={{
-                        padding: "4px 8px", marginBottom: "2px", borderRadius: "4px",
-                        display: "flex", alignItems: "center", gap: "6px",
-                        fontSize: "0.75rem", color: "#aaa",
-                      }}
-                    >
-                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
-                      <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
-                      <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <div
+                  onMouseDown={(e) => startGithubFilesDrag(e, -1)}
+                  style={{
+                    height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
+                    transition: "background 0.2s"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+                />
+                <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", height: `${githubFilesHeight}px`, overflowY: "auto" }}>
+                  <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px", display: "flex", justifyContent: "space-between" }}>
+                    <span>Analyzed Files</span>
+                    <span>{Object.keys(githubBlueprintData.file_info).length} files</span>
+                  </div>
+                  {Object.entries(githubBlueprintData.file_info).map(([path, info]) => {
+                    const filename = path.split('/').pop() || path;
+                    const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                    return (
+                      <div
+                        key={path}
+                        style={{
+                          padding: "4px 8px", marginBottom: "2px", borderRadius: "4px",
+                          display: "flex", alignItems: "center", gap: "6px",
+                          fontSize: "0.75rem", color: "#aaa",
+                        }}
+                      >
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
+                        <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
+                        <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div
+                  onMouseDown={(e) => startGithubFilesDrag(e, 1)}
+                  style={{
+                    height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
+                    transition: "background 0.2s", marginBottom: "4px"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
+                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+                />
+              </>
             )}
 
             {/* Remote Tree */}
