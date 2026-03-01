@@ -1705,6 +1705,7 @@ const NewApp = () => {
   // UI State
   const [sidebarView, setSidebarView] = useState("explorer");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState("split");
   const [currentFunc, setCurrentFunc] = useState(null);
 
@@ -3415,18 +3416,18 @@ const NewApp = () => {
             onClick={() => setHeatmapMode(h => !h)}
             title={heatmapMode ? "Switch to Language Colors" : "Switch to Complexity Heatmap"}
             style={{
-              position: "absolute", top: 12, right: graphSearchQuery ? 285 : 205, zIndex: 200,
+              position: "absolute", top: 46, right: 12, zIndex: 200,
               background: heatmapMode ? "rgba(124,77,255,0.25)" : "rgba(30,30,30,0.92)",
               backdropFilter: "blur(8px)",
               border: `1px solid ${heatmapMode ? '#7c4dff' : '#444'}`,
-              borderRadius: "8px", padding: "5px 10px",
+              borderRadius: "8px", padding: "4px 10px",
               cursor: "pointer", display: "flex", alignItems: "center", gap: "5px",
-              color: heatmapMode ? "#bb86fc" : "#888", fontSize: "0.7rem",
+              color: heatmapMode ? "#bb86fc" : "#888", fontSize: "0.65rem",
               boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
               transition: "all 0.2s",
             }}
           >
-            🔥 {heatmapMode ? "Heatmap" : "Heatmap"}
+            🔥 {heatmapMode ? "Heatmap On" : "Heatmap"}
           </button>
           {/* FILE DEPENDENCY MAP - Explorer only */}
           {viewMode === "fileMap" && sidebarView === "explorer" && (
@@ -3708,287 +3709,395 @@ const NewApp = () => {
       </div>
 
       {/* RIGHT PANEL DIVIDER */}
-      <div
-        onMouseDown={startDrag('rightpanel', rightPanelWidth)}
-        style={{
-          width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
-          cursor: "col-resize", flexShrink: 0, position: "relative"
-        }}
-      >
-        <div style={{
-          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-          width: "2px", height: "30px", background: "#666", borderRadius: "2px"
-        }} />
-      </div>
+      {!rightPanelCollapsed && (
+        <div
+          onMouseDown={startDrag('rightpanel', rightPanelWidth)}
+          style={{
+            width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+            cursor: "col-resize", flexShrink: 0, position: "relative"
+          }}
+        >
+          <div style={{
+            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            width: "2px", height: "30px", background: "#666", borderRadius: "2px"
+          }} />
+        </div>
+      )}
 
       {/* 4. RIGHT PANEL — INSPECTOR */}
-      <div style={{ width: `${rightPanelWidth}px`, background: "#252526", borderLeft: "none", display: "flex", flexDirection: "column", overflowY: "auto", flexShrink: 0 }}>
-        <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
-          <Search size={14} color="#4caf50" /> Inspector
+      {rightPanelCollapsed ? (
+        <div
+          onClick={() => setRightPanelCollapsed(false)}
+          style={{
+            width: "32px", background: "#252526", display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+            borderLeft: "1px solid #333", gap: "8px", transition: "background 0.15s"
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = '#2a2d2e'}
+          onMouseLeave={e => e.currentTarget.style.background = '#252526'}
+          title="Expand Inspector"
+        >
+          <ChevronRight size={14} color="#777" style={{ transform: 'rotate(180deg)' }} />
+          <span style={{
+            writingMode: "vertical-rl", textOrientation: "mixed",
+            fontSize: "0.65rem", color: "#666", letterSpacing: "1px",
+            textTransform: "uppercase", fontWeight: "bold"
+          }}>Inspector</span>
         </div>
-
-        {sidebarView === 'blueprint' ? (
-          blueprintSelectedFile && blueprintData?.file_info?.[blueprintSelectedFile] ? (
-            <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "12px", flex: 1, minHeight: 0, overflow: "hidden" }}>
-              <div style={{ fontSize: "0.85rem", color: "#d4d4d4", fontWeight: "bold", wordBreak: "break-all" }}>
-                <FileCode size={14} color="#b388ff" style={{ verticalAlign: 'middle', marginRight: '6px' }} />
-                {blueprintSelectedFile.split('/').pop()}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #ff9800" }}>
-                  <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imports (Out)</div>
-                  <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
-                    {blueprintData.dep_graph?.edges?.filter(e => e.source === blueprintSelectedFile).length || 0}
-                  </div>
-                </div>
-                <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #00bcd4" }}>
-                  <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imported By (In)</div>
-                  <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
-                    {blueprintData.dep_graph?.edges?.filter(e => e.target === blueprintSelectedFile).length || 0}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "6px" }}>Code Preview ({blueprintData.file_info[blueprintSelectedFile].functions.length} functions)</div>
-                <pre style={{
-                  margin: 0, padding: "10px", background: "#1e1e1e", borderRadius: "6px",
-                  color: "#d4d4d4", fontSize: "0.75rem", overflowY: "auto", flex: 1,
-                  border: "1px solid #333", whiteSpace: "pre-wrap"
-                }}>
-                  {getFileContent(blueprintTree, blueprintSelectedFile) || "No code available."}
-                </pre>
-              </div>
+      ) : (
+        <div style={{ width: `${rightPanelWidth}px`, background: "#252526", borderLeft: "none", display: "flex", flexDirection: "column", overflowY: "auto", flexShrink: 0 }}>
+          <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Search size={14} color="#4caf50" /> Inspector
             </div>
-          ) : (
-            <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
-              Select a file in the blueprint file tree to view its metrics and code.
-            </div>
-          )
-        ) : !analysisResult ? (
-          <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
-            Analyze code to see insights here.
+            <ChevronRight
+              size={14} color="#777" style={{ cursor: "pointer", transition: "color 0.15s" }}
+              onClick={() => setRightPanelCollapsed(true)}
+              onMouseEnter={e => e.currentTarget.style.color = '#ddd'}
+              onMouseLeave={e => e.currentTarget.style.color = '#777'}
+            />
           </div>
-        ) : (
-          <>
-            {/* Back to Dependencies button */}
-            {currentFunc && analysisResult?.func_dep_graph && (
-              <div style={{ padding: '8px 12px', borderBottom: '1px solid #333' }}>
-                <button
-                  onClick={() => { setCurrentFunc(null); setAiExplanation(null); }}
-                  style={{
-                    width: '100%', padding: '7px 10px',
-                    background: '#7c4dff22', border: '1px solid #7c4dff44',
-                    borderRadius: '6px', cursor: 'pointer',
-                    color: '#b388ff', fontSize: '0.75rem', fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                  }}
-                >
-                  ← Back to Dependencies
-                </button>
-              </div>
-            )}
-            {/* Function List */}
-            <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-              <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
-              {(analysisResult?.functions?.names || []).length === 0 ? (
-                <div style={{ fontSize: "0.75rem", color: "#555", fontStyle: "italic" }}>No functions detected</div>
-              ) : (
-                analysisResult.functions.names.map(fname => {
-                  const cx = analysisResult.complexity?.[fname] || 0;
-                  const badgeColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
-                  const isActive = currentFunc === fname;
-                  return (
-                    <div
-                      key={fname}
-                      onClick={() => handleAnalyze(fname)}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                        background: isActive ? "#2a2d2e" : "transparent",
-                        borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
-                        fontSize: "0.8rem", color: isActive ? "#fff" : "#bbb",
-                        transition: "background 0.15s"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "#2a2d2e"}
-                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
-                        <Code size={12} color={badgeColor} />
-                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fname}()</span>
-                      </div>
-                      <span style={{
-                        background: badgeColor + "22", color: badgeColor, fontSize: "0.65rem",
-                        padding: "2px 6px", borderRadius: "10px", fontWeight: "bold", flexShrink: 0
-                      }}>
-                        {cx}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
 
-            {/* Complexity Gauge */}
-            {currentFunc && analysisResult?.complexity?.[currentFunc] != null && (
-              <div style={{ padding: "12px", borderBottom: "1px solid #333" }}>
-                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Complexity</div>
-                {(() => {
-                  const cx = analysisResult.complexity[currentFunc];
-                  const pct = Math.min(cx / 20 * 100, 100);
-                  const barColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
-                  const label = cx <= 5 ? "Simple" : cx <= 10 ? "Moderate" : cx <= 15 ? "Complex" : "Very Complex";
-                  return (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                        <span style={{ fontSize: "0.75rem", color: "#ccc" }}>{currentFunc}()</span>
-                        <span style={{ fontSize: "0.75rem", color: barColor, fontWeight: "bold" }}>{cx} — {label}</span>
-                      </div>
-                      <div style={{ background: "#1e1e1e", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
-                        <div style={{
-                          width: `${pct}%`, height: "100%", borderRadius: "4px",
-                          background: `linear-gradient(90deg, #4caf50, ${barColor})`,
-                          transition: "width 0.6s ease, background 0.6s ease",
-                          boxShadow: `0 0 8px ${barColor}44`
-                        }} />
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* AI Explain Button */}
-            {analysisResult && (
-              <div style={{ padding: '10px 12px', borderBottom: '1px solid #333' }}>
-                <button
-                  onClick={handleExplain}
-                  disabled={aiLoading}
-                  style={{
-                    width: '100%', padding: '8px 12px',
-                    background: aiLoading ? '#333' : 'linear-gradient(135deg, #7c4dff, #448aff)',
-                    border: 'none', borderRadius: '6px', cursor: aiLoading ? 'wait' : 'pointer',
-                    color: '#fff', fontSize: '0.78rem', fontWeight: 600,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    transition: 'all 0.2s', boxShadow: aiLoading ? 'none' : '0 2px 8px rgba(124, 77, 255, 0.3)',
-                  }}
-                >
-                  {aiLoading ? <Loader size={14} className="spin" /> : <Zap size={14} />}
-                  {aiLoading ? 'Thinking...' : `✨ Explain ${currentFunc ? currentFunc + '()' : 'Code'}`}
-                </button>
-              </div>
-            )}
-
-            {/* AI Explanation */}
-            {aiExplanation && (
-              <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
-                <div style={{ fontSize: '0.7rem', color: '#7c4dff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Zap size={12} /> AI Explanation
+          {sidebarView === 'blueprint' ? (
+            blueprintSelectedFile && blueprintData?.file_info?.[blueprintSelectedFile] ? (
+              <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "12px", flex: 1, minHeight: 0, overflow: "hidden" }}>
+                <div style={{ fontSize: "0.85rem", color: "#d4d4d4", fontWeight: "bold", wordBreak: "break-all" }}>
+                  <FileCode size={14} color="#b388ff" style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                  {blueprintSelectedFile.split('/').pop()}
                 </div>
-                {(() => {
-                  // Parse structured response into Overview + Algorithm
-                  const text = aiExplanation;
-                  const overviewMatch = text.match(/OVERVIEW:\s*\n?([\s\S]*?)(?=\n\s*ALGORITHM:|$)/i);
-                  const algorithmMatch = text.match(/ALGORITHM:\s*\n?([\s\S]*?)$/i);
-                  const overview = overviewMatch ? overviewMatch[1].trim() : text;
-                  const algorithm = algorithmMatch ? algorithmMatch[1].trim() : null;
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                  <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #ff9800" }}>
+                    <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imports (Out)</div>
+                    <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
+                      {blueprintData.dep_graph?.edges?.filter(e => e.source === blueprintSelectedFile).length || 0}
+                    </div>
+                  </div>
+                  <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #00bcd4" }}>
+                    <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imported By (In)</div>
+                    <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
+                      {blueprintData.dep_graph?.edges?.filter(e => e.target === blueprintSelectedFile).length || 0}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+                  <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "6px" }}>Code Preview ({blueprintData.file_info[blueprintSelectedFile].functions.length} functions)</div>
+                  <pre style={{
+                    margin: 0, padding: "10px", background: "#1e1e1e", borderRadius: "6px",
+                    color: "#d4d4d4", fontSize: "0.75rem", overflowY: "auto", flex: 1,
+                    border: "1px solid #333", whiteSpace: "pre-wrap"
+                  }}>
+                    {getFileContent(blueprintTree, blueprintSelectedFile) || "No code available."}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+                Select a file in the blueprint file tree to view its metrics and code.
+              </div>
+            )
+          ) : sidebarView === 'github' && githubBlueprintData?.file_info && !analysisResult ? (
+            <div style={{ padding: "10px 12px", flex: 1, overflowY: "auto" }}>
+              <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "10px", letterSpacing: "0.5px" }}>
+                Repo Files — {Object.keys(githubBlueprintData.file_info).length} files
+              </div>
+              {Object.entries(githubBlueprintData.file_info)
+                .sort(([, a], [, b]) => {
+                  const aMax = a.complexity ? Math.max(...Object.values(a.complexity), 0) : 0;
+                  const bMax = b.complexity ? Math.max(...Object.values(b.complexity), 0) : 0;
+                  return bMax - aMax;
+                })
+                .map(([filePath, info]) => {
+                  const filename = filePath.split('/').pop() || filePath;
+                  const folderPath = filePath.split('/').slice(0, -1).join('/');
+                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                  const langColor = langColors[info.language] || '#666';
+                  const maxCx = info.complexity ? Math.max(...Object.values(info.complexity), 0) : 0;
+                  const fileBadgeColor = maxCx <= 5 ? "#4caf50" : maxCx <= 10 ? "#ff9800" : "#f44336";
 
                   return (
-                    <>
-                      {/* Overview */}
+                    <div key={filePath} style={{ marginBottom: "8px", background: "#1e1e1e", borderRadius: "6px", border: "1px solid #333", overflow: "hidden" }}>
+                      {/* File Header */}
                       <div style={{
-                        background: 'linear-gradient(135deg, #1a1a2e 0%, #1e1e1e 100%)',
-                        borderRadius: '8px', padding: '10px 12px', marginBottom: '8px',
-                        fontSize: '0.76rem', color: '#d4d4d4', lineHeight: '1.5',
-                        borderLeft: '3px solid #7c4dff',
-                        fontFamily: 'system-ui, sans-serif',
+                        padding: "6px 8px", display: "flex", alignItems: "center", gap: "6px",
+                        borderBottom: "1px solid #2a2a2a", cursor: "default"
                       }}>
-                        {overview}
-                      </div>
-
-                      {/* Algorithm Steps */}
-                      {algorithm && (
-                        <div style={{
-                          background: '#1a1a1a', borderRadius: '8px', padding: '10px 12px',
-                          fontSize: '0.72rem', lineHeight: '1.6', fontFamily: 'system-ui, sans-serif',
-                        }}>
-                          <div style={{ color: '#7c4dff', fontSize: '0.65rem', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
-                            Algorithm
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: langColor, flexShrink: 0 }} />
+                        <div style={{ flex: 1, overflow: "hidden" }}>
+                          <div style={{ fontSize: "0.78rem", color: "#ddd", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {filename}
                           </div>
-                          {algorithm.split('\n').filter(l => l.trim()).map((line, i) => {
-                            const isCheck = /check:/i.test(line);
-                            const isLoop = /loop:/i.test(line);
-                            const isStart = /^\s*1[\.\)]/i.test(line) || /\bstart\b/i.test(line) || /\bbegin\b/i.test(line);
-                            const isReturn = /\breturn\b/i.test(line) || /\bend\b/i.test(line) || /\boutput\b/i.test(line);
-                            const color = isCheck ? '#ff9800' : isLoop ? '#00bcd4' : isStart ? '#4caf50' : isReturn ? '#f44336' : '#aaa';
-                            const highlighted = isCheck || isLoop || isStart || isReturn;
+                          {folderPath && (
+                            <div style={{ fontSize: "0.6rem", color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {folderPath}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center", flexShrink: 0 }}>
+                          <span style={{ fontSize: "0.6rem", color: "#666" }}>{info.line_count}L</span>
+                          <span style={{
+                            background: fileBadgeColor + "22", color: fileBadgeColor, fontSize: "0.6rem",
+                            padding: "1px 5px", borderRadius: "8px", fontWeight: "bold"
+                          }}>
+                            cx:{maxCx}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Functions */}
+                      {info.functions && info.functions.length > 0 && (
+                        <div style={{ padding: "4px 8px" }}>
+                          {info.functions.map(fname => {
+                            const cx = info.complexity?.[fname] || 0;
+                            const badgeColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
                             return (
-                              <div key={i} style={{
-                                padding: '3px 0', color,
-                                borderLeft: `2px solid ${highlighted ? color : 'transparent'}`,
-                                paddingLeft: highlighted ? '8px' : '0',
-                                marginBottom: '2px',
+                              <div key={fname} style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                padding: "2px 4px", fontSize: "0.72rem", color: "#aaa",
                               }}>
-                                {line.trim()}
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px", overflow: "hidden" }}>
+                                  <Code size={10} color={badgeColor} />
+                                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fname}()</span>
+                                </div>
+                                <span style={{
+                                  background: badgeColor + "18", color: badgeColor, fontSize: "0.58rem",
+                                  padding: "1px 4px", borderRadius: "8px", fontWeight: "bold", flexShrink: 0
+                                }}>
+                                  {cx}
+                                </span>
                               </div>
                             );
                           })}
                         </div>
                       )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Insights */}
-            {analysisResult?.insights && (
-              <div style={{ padding: "12px" }}>
-                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Insights</div>
-                <div style={{
-                  background: "#1e1e1e", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px",
-                  fontSize: "0.78rem", color: "#ccc", lineHeight: "1.5",
-                  borderLeft: "3px solid #4caf50"
-                }}>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
-                    {analysisResult.insights.decision_count > 0 && (
-                      <span style={{ background: "#ff980022", color: "#ff9800", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
-                        🔀 {analysisResult.insights.decision_count} branch{analysisResult.insights.decision_count !== 1 ? "es" : ""}
-                      </span>
-                    )}
-                    {analysisResult.insights.loop_count > 0 && (
-                      <span style={{ background: "#00bcd422", color: "#00bcd4", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
-                        🔁 {analysisResult.insights.loop_count} loop{analysisResult.insights.loop_count !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {analysisResult.insights.return_count > 0 && (
-                      <span style={{ background: "#f4433622", color: "#f44336", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
-                        ↩ {analysisResult.insights.return_count} return{analysisResult.insights.return_count !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                  {analysisResult.insights.summary}
-                </div>
-                {analysisResult.insights.suggestions?.map((s, i) => {
-                  const icon = s.type === "warning" ? <AlertTriangle size={13} color="#ff9800" /> : s.type === "success" ? <CheckCircle size={13} color="#4caf50" /> : <Info size={13} color="#64b5f6" />;
-                  const borderColor = s.type === "warning" ? "#ff9800" : s.type === "success" ? "#4caf50" : "#64b5f6";
-                  return (
-                    <div key={i} style={{
-                      display: "flex", alignItems: "flex-start", gap: "8px",
-                      background: "#1e1e1e", borderRadius: "6px", padding: "8px 10px", marginBottom: "6px",
-                      borderLeft: `3px solid ${borderColor}`, fontSize: "0.75rem", color: "#aaa", lineHeight: "1.4"
-                    }}>
-                      <div style={{ flexShrink: 0, marginTop: "1px" }}>{icon}</div>
-                      <span>{s.text}</span>
                     </div>
                   );
                 })}
+            </div>
+          ) : !analysisResult ? (
+            <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+              Analyze code to see insights here.
+            </div>
+          ) : (
+            <>
+              {/* Back to Dependencies button */}
+              {currentFunc && analysisResult?.func_dep_graph && (
+                <div style={{ padding: '8px 12px', borderBottom: '1px solid #333' }}>
+                  <button
+                    onClick={() => { setCurrentFunc(null); setAiExplanation(null); }}
+                    style={{
+                      width: '100%', padding: '7px 10px',
+                      background: '#7c4dff22', border: '1px solid #7c4dff44',
+                      borderRadius: '6px', cursor: 'pointer',
+                      color: '#b388ff', fontSize: '0.75rem', fontWeight: 600,
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                    }}
+                  >
+                    ← Back to Dependencies
+                  </button>
+                </div>
+              )}
+              {/* Function List */}
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
+                {(analysisResult?.functions?.names || []).length === 0 ? (
+                  <div style={{ fontSize: "0.75rem", color: "#555", fontStyle: "italic" }}>No functions detected</div>
+                ) : (
+                  analysisResult.functions.names.map(fname => {
+                    const cx = analysisResult.complexity?.[fname] || 0;
+                    const badgeColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
+                    const isActive = currentFunc === fname;
+                    return (
+                      <div
+                        key={fname}
+                        onClick={() => handleAnalyze(fname)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                          background: isActive ? "#2a2d2e" : "transparent",
+                          borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
+                          fontSize: "0.8rem", color: isActive ? "#fff" : "#bbb",
+                          transition: "background 0.15s"
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#2a2d2e"}
+                        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
+                          <Code size={12} color={badgeColor} />
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fname}()</span>
+                        </div>
+                        <span style={{
+                          background: badgeColor + "22", color: badgeColor, fontSize: "0.65rem",
+                          padding: "2px 6px", borderRadius: "10px", fontWeight: "bold", flexShrink: 0
+                        }}>
+                          {cx}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            )}
-          </>
-        )}
-      </div>
+
+              {/* Complexity Gauge */}
+              {currentFunc && analysisResult?.complexity?.[currentFunc] != null && (
+                <div style={{ padding: "12px", borderBottom: "1px solid #333" }}>
+                  <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Complexity</div>
+                  {(() => {
+                    const cx = analysisResult.complexity[currentFunc];
+                    const pct = Math.min(cx / 20 * 100, 100);
+                    const barColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
+                    const label = cx <= 5 ? "Simple" : cx <= 10 ? "Moderate" : cx <= 15 ? "Complex" : "Very Complex";
+                    return (
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                          <span style={{ fontSize: "0.75rem", color: "#ccc" }}>{currentFunc}()</span>
+                          <span style={{ fontSize: "0.75rem", color: barColor, fontWeight: "bold" }}>{cx} — {label}</span>
+                        </div>
+                        <div style={{ background: "#1e1e1e", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
+                          <div style={{
+                            width: `${pct}%`, height: "100%", borderRadius: "4px",
+                            background: `linear-gradient(90deg, #4caf50, ${barColor})`,
+                            transition: "width 0.6s ease, background 0.6s ease",
+                            boxShadow: `0 0 8px ${barColor}44`
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* AI Explain Button */}
+              {analysisResult && (
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid #333' }}>
+                  <button
+                    onClick={handleExplain}
+                    disabled={aiLoading}
+                    style={{
+                      width: '100%', padding: '8px 12px',
+                      background: aiLoading ? '#333' : 'linear-gradient(135deg, #7c4dff, #448aff)',
+                      border: 'none', borderRadius: '6px', cursor: aiLoading ? 'wait' : 'pointer',
+                      color: '#fff', fontSize: '0.78rem', fontWeight: 600,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      transition: 'all 0.2s', boxShadow: aiLoading ? 'none' : '0 2px 8px rgba(124, 77, 255, 0.3)',
+                    }}
+                  >
+                    {aiLoading ? <Loader size={14} className="spin" /> : <Zap size={14} />}
+                    {aiLoading ? 'Thinking...' : `✨ Explain ${currentFunc ? currentFunc + '()' : 'Code'}`}
+                  </button>
+                </div>
+              )}
+
+              {/* AI Explanation */}
+              {aiExplanation && (
+                <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#7c4dff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Zap size={12} /> AI Explanation
+                  </div>
+                  {(() => {
+                    // Parse structured response into Overview + Algorithm
+                    const text = aiExplanation;
+                    const overviewMatch = text.match(/OVERVIEW:\s*\n?([\s\S]*?)(?=\n\s*ALGORITHM:|$)/i);
+                    const algorithmMatch = text.match(/ALGORITHM:\s*\n?([\s\S]*?)$/i);
+                    const overview = overviewMatch ? overviewMatch[1].trim() : text;
+                    const algorithm = algorithmMatch ? algorithmMatch[1].trim() : null;
+
+                    return (
+                      <>
+                        {/* Overview */}
+                        <div style={{
+                          background: 'linear-gradient(135deg, #1a1a2e 0%, #1e1e1e 100%)',
+                          borderRadius: '8px', padding: '10px 12px', marginBottom: '8px',
+                          fontSize: '0.76rem', color: '#d4d4d4', lineHeight: '1.5',
+                          borderLeft: '3px solid #7c4dff',
+                          fontFamily: 'system-ui, sans-serif',
+                        }}>
+                          {overview}
+                        </div>
+
+                        {/* Algorithm Steps */}
+                        {algorithm && (
+                          <div style={{
+                            background: '#1a1a1a', borderRadius: '8px', padding: '10px 12px',
+                            fontSize: '0.72rem', lineHeight: '1.6', fontFamily: 'system-ui, sans-serif',
+                          }}>
+                            <div style={{ color: '#7c4dff', fontSize: '0.65rem', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
+                              Algorithm
+                            </div>
+                            {algorithm.split('\n').filter(l => l.trim()).map((line, i) => {
+                              const isCheck = /check:/i.test(line);
+                              const isLoop = /loop:/i.test(line);
+                              const isStart = /^\s*1[\.\)]/i.test(line) || /\bstart\b/i.test(line) || /\bbegin\b/i.test(line);
+                              const isReturn = /\breturn\b/i.test(line) || /\bend\b/i.test(line) || /\boutput\b/i.test(line);
+                              const color = isCheck ? '#ff9800' : isLoop ? '#00bcd4' : isStart ? '#4caf50' : isReturn ? '#f44336' : '#aaa';
+                              const highlighted = isCheck || isLoop || isStart || isReturn;
+                              return (
+                                <div key={i} style={{
+                                  padding: '3px 0', color,
+                                  borderLeft: `2px solid ${highlighted ? color : 'transparent'}`,
+                                  paddingLeft: highlighted ? '8px' : '0',
+                                  marginBottom: '2px',
+                                }}>
+                                  {line.trim()}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Insights */}
+              {analysisResult?.insights && (
+                <div style={{ padding: "12px" }}>
+                  <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Insights</div>
+                  <div style={{
+                    background: "#1e1e1e", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px",
+                    fontSize: "0.78rem", color: "#ccc", lineHeight: "1.5",
+                    borderLeft: "3px solid #4caf50"
+                  }}>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
+                      {analysisResult.insights.decision_count > 0 && (
+                        <span style={{ background: "#ff980022", color: "#ff9800", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
+                          🔀 {analysisResult.insights.decision_count} branch{analysisResult.insights.decision_count !== 1 ? "es" : ""}
+                        </span>
+                      )}
+                      {analysisResult.insights.loop_count > 0 && (
+                        <span style={{ background: "#00bcd422", color: "#00bcd4", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
+                          🔁 {analysisResult.insights.loop_count} loop{analysisResult.insights.loop_count !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {analysisResult.insights.return_count > 0 && (
+                        <span style={{ background: "#f4433622", color: "#f44336", padding: "2px 8px", borderRadius: "10px", fontSize: "0.65rem" }}>
+                          ↩ {analysisResult.insights.return_count} return{analysisResult.insights.return_count !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    {analysisResult.insights.summary}
+                  </div>
+                  {analysisResult.insights.suggestions?.map((s, i) => {
+                    const icon = s.type === "warning" ? <AlertTriangle size={13} color="#ff9800" /> : s.type === "success" ? <CheckCircle size={13} color="#4caf50" /> : <Info size={13} color="#64b5f6" />;
+                    const borderColor = s.type === "warning" ? "#ff9800" : s.type === "success" ? "#4caf50" : "#64b5f6";
+                    return (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "flex-start", gap: "8px",
+                        background: "#1e1e1e", borderRadius: "6px", padding: "8px 10px", marginBottom: "6px",
+                        borderLeft: `3px solid ${borderColor}`, fontSize: "0.75rem", color: "#aaa", lineHeight: "1.4"
+                      }}>
+                        <div style={{ flexShrink: 0, marginTop: "1px" }}>{icon}</div>
+                        <span>{s.text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* API SETTINGS MODAL */}
       {showApiKeyModal && (
