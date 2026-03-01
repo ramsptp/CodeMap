@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
-import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent, checkRateLimit } from './utils/githubApi';
+import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent, checkRateLimit, fetchReadme, fetchFileCommits } from './utils/githubApi';
 
 // ===========================================
 // DEPENDENCY SCANNER
@@ -1808,6 +1808,8 @@ const NewApp = () => {
   const [githubBlueprintData, setGithubBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
   const [githubBlueprintLoading, setGithubBlueprintLoading] = useState(false);
   const [githubFlowchartFile, setGithubFlowchartFile] = useState(null);
+  const [githubReadmeHtml, setGithubReadmeHtml] = useState(null);
+  const [githubFileCommits, setGithubFileCommits] = useState([]); // recent commits for selected file
   const [showGithubPopup, setShowGithubPopup] = useState(false);
   const [githubQuickStats, setGithubQuickStats] = useState(null);
 
@@ -1854,6 +1856,8 @@ const NewApp = () => {
       };
       collectStats(tree);
       setGithubQuickStats({ totalFiles, codeFiles, totalSize, langBreakdown, owner: parsed.owner, repo: parsed.repo, branch });
+      // Fetch README in parallel (non-blocking)
+      fetchReadme(parsed.owner, parsed.repo, token).then(html => setGithubReadmeHtml(html)).catch(() => setGithubReadmeHtml(null));
       setShowGithubPopup(true);
     } catch (err) {
       setGithubError(err.message);
@@ -1876,6 +1880,10 @@ const NewApp = () => {
       const content = await fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, node._ghPath, githubToken || null);
       setGithubFileContent(content);
       setGithubLoadingFile(null);
+      // Fetch recent commits for this file (non-blocking)
+      fetchFileCommits(githubRepoInfo.owner, githubRepoInfo.repo, node._ghPath, githubToken || null)
+        .then(commits => setGithubFileCommits(commits))
+        .catch(() => setGithubFileCommits([]));
 
       // Inject content into the tree node for dependency scanning
       setGithubTree(prev => {
@@ -2884,6 +2892,52 @@ const NewApp = () => {
               </div>
             )}
 
+            {/* Recent Commits (for selected file) */}
+            {githubFileCommits.length > 0 && githubSelectedFile && (
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333", maxHeight: "220px", overflowY: "auto" }}>
+                <div style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <GitBranch size={10} /> Recent Commits
+                </div>
+                {githubFileCommits.map((c, i) => (
+                  <a
+                    key={i}
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: "8px",
+                      padding: "6px 8px", marginBottom: "4px", borderRadius: "6px",
+                      background: "#1e1e1e", textDecoration: "none",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#2a2a2a"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#1e1e1e"}
+                  >
+                    {c.avatar && (
+                      <img
+                        src={c.avatar}
+                        alt=""
+                        style={{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, marginTop: "1px" }}
+                      />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: "0.72rem", color: "#ccc", lineHeight: "1.3",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {c.message}
+                      </div>
+                      <div style={{ fontSize: "0.6rem", color: "#666", marginTop: "2px", display: "flex", gap: "6px" }}>
+                        <span style={{ color: "#7c4dff", fontFamily: "monospace" }}>{c.sha}</span>
+                        <span>{c.author}</span>
+                        <span>{c.date ? new Date(c.date).toLocaleDateString() : ''}</span>
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+
             {/* File List (after analysis) */}
             {githubBlueprintData?.file_info && (
               <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", maxHeight: "200px", overflowY: "auto" }}>
@@ -3872,7 +3926,8 @@ const NewApp = () => {
             onClick={(e) => e.stopPropagation()}
             style={{
               background: '#252526', borderRadius: '16px', padding: '28px 32px',
-              border: '1px solid #444', width: '420px', maxWidth: '90vw',
+              border: '1px solid #444', width: '520px', maxWidth: '90vw',
+              maxHeight: '85vh', overflowY: 'auto',
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
             }}
           >
@@ -3928,6 +3983,23 @@ const NewApp = () => {
                       );
                     })}
                 </div>
+              </div>
+            )}
+
+            {/* README Preview */}
+            {githubReadmeHtml && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>README</div>
+                <div
+                  style={{
+                    background: '#1e1e1e', borderRadius: '10px', padding: '16px',
+                    maxHeight: '250px', overflowY: 'auto',
+                    fontSize: '0.78rem', color: '#ccc', lineHeight: '1.6',
+                    border: '1px solid #333',
+                  }}
+                  dangerouslySetInnerHTML={{ __html: githubReadmeHtml }}
+                  className="github-readme-preview"
+                />
               </div>
             )}
 

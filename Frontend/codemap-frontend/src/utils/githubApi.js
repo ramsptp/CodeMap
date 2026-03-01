@@ -142,3 +142,30 @@ export async function checkRateLimit(token = null) {
         reset: data.rate?.reset ? new Date(data.rate.reset * 1000) : null
     };
 }
+
+// Fetch README content (rendered as HTML by GitHub)
+export async function fetchReadme(owner, repo, token = null) {
+    const h = headers(token);
+    h['Accept'] = 'application/vnd.github.v3.html';
+    const res = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/readme`, { headers: h });
+    if (!res.ok) return null; // No README
+    return await res.text();
+}
+
+// Fetch recent commits for a specific file
+export async function fetchFileCommits(owner, repo, filePath, token = null, perPage = 10) {
+    const res = await fetch(
+        `${GITHUB_API}/repos/${owner}/${repo}/commits?path=${encodeURIComponent(filePath)}&per_page=${perPage}`,
+        { headers: headers(token) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.map(c => ({
+        sha: c.sha?.substring(0, 7),
+        message: c.commit?.message?.split('\n')[0] || '',
+        author: c.commit?.author?.name || c.author?.login || 'Unknown',
+        date: c.commit?.author?.date || '',
+        avatar: c.author?.avatar_url || null,
+        url: c.html_url || '',
+    }));
+}
