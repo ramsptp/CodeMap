@@ -1802,6 +1802,13 @@ const NewApp = () => {
   const [githubLoadingFile, setGithubLoadingFile] = useState(null);
   const [githubError, setGithubError] = useState(null);
 
+  // GitHub Blueprint state (mirrors Blueprint pattern)
+  const [githubBlueprintData, setGithubBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
+  const [githubBlueprintLoading, setGithubBlueprintLoading] = useState(false);
+  const [githubFlowchartFile, setGithubFlowchartFile] = useState(null);
+  const [showGithubPopup, setShowGithubPopup] = useState(false);
+  const [githubQuickStats, setGithubQuickStats] = useState(null);
+
   // Load GitHub repo
   const handleLoadRepo = async () => {
     const parsed = parseRepoInput(repoInput);
@@ -1813,11 +1820,36 @@ const NewApp = () => {
     setGithubFileContent('');
     setAnalysisResult(null);
     setCurrentFunc(null);
+    setGithubBlueprintData(null);
+    setGithubFlowchartFile(null);
     try {
       const branch = await fetchDefaultBranch(parsed.owner, parsed.repo);
       const tree = await fetchRepoTree(parsed.owner, parsed.repo, branch);
       setGithubRepoInfo({ ...parsed, branch });
       setGithubTree(tree);
+
+      // Compute quick stats from the tree for the popup
+      const codeExts = ['py', 'java', 'js', 'jsx', 'ts', 'tsx', 'cpp', 'cc', 'c', 'h', 'hpp', 'cs', 'go', 'rs', 'rb'];
+      const langMap = { py: 'Python', java: 'Java', js: 'JavaScript', jsx: 'JavaScript', ts: 'TypeScript', tsx: 'TypeScript', cpp: 'C++', cc: 'C++', c: 'C', h: 'C/C++', hpp: 'C++', cs: 'C#', go: 'Go', rs: 'Rust', rb: 'Ruby' };
+      let totalFiles = 0, codeFiles = 0, totalSize = 0;
+      const langBreakdown = {};
+      const collectStats = (node) => {
+        if (node.type === 'file') {
+          totalFiles++;
+          const ext = node.name.split('.').pop()?.toLowerCase();
+          if (codeExts.includes(ext)) {
+            codeFiles++;
+            const lang = langMap[ext] || ext;
+            langBreakdown[lang] = (langBreakdown[lang] || 0) + 1;
+          }
+          if (node._ghSize) totalSize += node._ghSize;
+        } else if (node.type === 'folder' && node.children) {
+          Object.values(node.children).forEach(collectStats);
+        }
+      };
+      collectStats(tree);
+      setGithubQuickStats({ totalFiles, codeFiles, totalSize, langBreakdown, owner: parsed.owner, repo: parsed.repo, branch });
+      setShowGithubPopup(true);
     } catch (err) {
       setGithubError(err.message);
     } finally {
@@ -1864,6 +1896,100 @@ const NewApp = () => {
       setGithubLoadingFile(null);
     }
   };
+
+  // Batch-analyze GitHub repo
+  const handleAnalyzeGithubRepo = async () => {
+    if (!githubTree || !githubRepoInfo) return;
+    setGithubBlueprintLoading(true);
+    setShowGithubPopup(false);
+    try {
+      // Collect all code files from tree, fetch their content
+      const codeExts = ['py', 'java', 'js', 'jsx', 'ts', 'tsx', 'cpp', 'cc', 'c', 'h', 'hpp', 'cs', 'go', 'rs', 'rb'];
+      const codeFiles = [];
+      const collectCodeFiles = (node, path) => {
+        if (node.type === 'file') {
+          const ext = node.name.split('.').pop()?.toLowerCase();
+          if (codeExts.includes(ext)) {
+            codeFiles.push({ path, ghPath: node._ghPath || path, content: node.content });
+          }
+        } else if (node.type === 'folder' && node.children) {
+          Object.entries(node.children).forEach(([name, child]) => {
+            collectCodeFiles(child, path ? `${path}/${name}` : name);
+          });
+        }
+      };
+      collectCodeFiles(githubTree, '');
+
+      // Fetch content for files that don't have it yet
+      const filesToFetch = codeFiles.filter(f => !f.content);
+      if (filesToFetch.length > 0) {
+        const batchSize = 5; // Fetch 5 files at a time to avoid rate limits
+        for (let i = 0; i < filesToFetch.length; i += batchSize) {
+          const batch = filesToFetch.slice(i, i + batchSize);
+          const results = await Promise.all(
+            batch.map(f => fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, f.ghPath).catch(() => ''))
+          );
+          batch.forEach((f, idx) => { f.content = results[idx]; });
+        }
+      }
+
+      // POST to analyze-project
+      const projectFiles = codeFiles.filter(f => f.content).map(f => ({ path: f.path, content: f.content }));
+      if (projectFiles.length > 0) {
+        const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
+        if (!res.data.error) {
+          setGithubBlueprintData(res.data);
+        } else {
+          alert('Analysis error: ' + res.data.error);
+        }
+      }
+    } catch (err) {
+      console.error('GitHub batch analysis failed:', err);
+      alert('Failed to analyze repository.');
+    } finally {
+      setGithubBlueprintLoading(false);
+    }
+  };
+
+  // GitHub insights (same logic as blueprintInsights)
+  const githubInsights = useMemo(() => {
+    if (!githubBlueprintData?.dep_graph) return null;
+    const { nodes, edges } = githubBlueprintData.dep_graph;
+    const importedByCount = {};
+    const importsCount = {};
+    nodes.forEach(n => { importedByCount[n.id] = 0; importsCount[n.id] = 0; });
+    edges.forEach(e => {
+      if (importedByCount[e.target] !== undefined) importedByCount[e.target]++;
+      if (importsCount[e.source] !== undefined) importsCount[e.source]++;
+    });
+    let mostImported = null, maxCount = -1, isolatedCount = 0;
+    nodes.forEach(n => {
+      const inCount = importedByCount[n.id];
+      const outCount = importsCount[n.id];
+      if (inCount > maxCount) { maxCount = inCount; mostImported = { file: n.data?.label || n.id, count: inCount }; }
+      if (inCount === 0 && outCount === 0) isolatedCount++;
+    });
+    const cyclesCount = nodes.filter(n => n.data?.is_cyclic).length;
+    return { mostImported: maxCount > 0 ? mostImported : null, isolatedCount, cyclesCount };
+  }, [githubBlueprintData]);
+
+  // GitHub dep data for FuncDepGraph (same as blueprintDepData)
+  const githubDepData = useMemo(() => {
+    if (!githubBlueprintData?.dep_graph) return null;
+    return {
+      nodes: githubBlueprintData.dep_graph.nodes.map(n => ({
+        ...n,
+        type: 'funcDep',
+        data: {
+          label: n.data.label,
+          complexity: n.data.maxComplexity || 0,
+          language: n.data.language,
+          is_cyclic: n.data.is_cyclic
+        }
+      })),
+      edges: githubBlueprintData.dep_graph.edges.map(e => ({ ...e, source: e.source, target: e.target })),
+    };
+  }, [githubBlueprintData]);
 
   // 4. GRAPH LAYOUT MEMORY STATE
   const [graphMemory, setGraphMemory] = useState({});
@@ -2656,6 +2782,88 @@ const NewApp = () => {
               )}
             </div>
 
+            {/* Analysis Loading */}
+            {githubBlueprintLoading && (
+              <div style={{ padding: "20px 12px", textAlign: "center", borderBottom: "1px solid #333" }}>
+                <Loader size={20} className="spin" style={{ marginBottom: "8px" }} />
+                <div style={{ fontSize: "0.75rem", color: "#4caf50" }}>Analyzing repository...</div>
+                <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "4px" }}>Fetching and processing code files</div>
+              </div>
+            )}
+
+            {/* Project Stats (after analysis) */}
+            {githubBlueprintData?.project_stats && (
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ fontSize: "0.65rem", color: "#238636", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                  {[
+                    { label: "Files", value: githubBlueprintData.project_stats.total_files, color: "#4caf50" },
+                    { label: "Functions", value: githubBlueprintData.project_stats.total_functions, color: "#ff9800" },
+                    { label: "Lines", value: githubBlueprintData.project_stats.total_lines, color: "#00bcd4" },
+                    { label: "Languages", value: githubBlueprintData.project_stats.languages.length, color: "#e040fb" },
+                  ].map((s, i) => (
+                    <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Health Insights (after analysis) */}
+            {githubInsights && (
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {githubInsights.cyclesCount > 0 && (
+                    <div style={{ background: "#f4433615", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #f44336", fontSize: "0.75rem", color: "#ffcdd2" }}>
+                      <span style={{ fontWeight: "bold" }}>⚠️ {githubInsights.cyclesCount} files</span> in import cycles
+                    </div>
+                  )}
+                  {githubInsights.mostImported && (
+                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #238636", fontSize: "0.75rem", color: "#ccc" }}>
+                      <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
+                      {githubInsights.mostImported.file} ({githubInsights.mostImported.count} imports)
+                    </div>
+                  )}
+                  {githubInsights.isolatedCount > 0 && (
+                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
+                      <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {githubInsights.isolatedCount}
+                    </div>
+                  )}
+                  {!githubInsights.cyclesCount && !githubInsights.mostImported && !githubInsights.isolatedCount > 0 && (
+                    <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>No special insights detected.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* File List (after analysis) */}
+            {githubBlueprintData?.file_info && (
+              <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", maxHeight: "200px", overflowY: "auto" }}>
+                <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Analyzed Files</div>
+                {Object.entries(githubBlueprintData.file_info).map(([path, info]) => {
+                  const filename = path.split('/').pop() || path;
+                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                  return (
+                    <div
+                      key={path}
+                      style={{
+                        padding: "4px 8px", marginBottom: "2px", borderRadius: "4px",
+                        display: "flex", alignItems: "center", gap: "6px",
+                        fontSize: "0.75rem", color: "#aaa",
+                      }}
+                    >
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
+                      <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
+                      <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Remote Tree */}
             <GitHubExplorer
               treeData={githubTree}
@@ -3013,10 +3221,10 @@ const NewApp = () => {
             </div>
           )}
 
-          {(viewMode === "graph" || viewMode === "split" || sidebarView === "blueprint") && (
+          {(viewMode === "graph" || viewMode === "split" || sidebarView === "blueprint" || (sidebarView === "github" && githubBlueprintData)) && (
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
-              {loading || blueprintLoading ? (
-                <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : "Analyzing..."}</div>
+              {loading || blueprintLoading || githubBlueprintLoading ? (
+                <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : githubBlueprintLoading ? "Analyzing GitHub repository..." : "Analyzing..."}</div>
               ) : sidebarView === "blueprint" && !blueprintFlowchartFile && blueprintData?.dep_graph ? (
                 <>
                   <FuncDepGraph
@@ -3085,6 +3293,101 @@ const NewApp = () => {
                 <div style={centerMsgStyle}>
                   <p>🏗️ Project Blueprint</p>
                   <p style={{ fontSize: "0.8rem" }}>Upload a project ZIP to see its architecture.</p>
+                </div>
+              ) : sidebarView === "github" && !githubFlowchartFile && githubBlueprintData?.dep_graph ? (
+                <>
+                  <FuncDepGraph
+                    depData={githubDepData}
+                    onFuncClick={(fileId) => { }}
+                    onNodeDoubleClick={(e, node) => {
+                      console.log("GitHub Double Click triggered for node:", node);
+                      setGithubFlowchartFile(node.id);
+                      // Find file content and analyze it
+                      const fileInfo = githubBlueprintData?.file_info;
+                      if (fileInfo) {
+                        const filePath = Object.keys(fileInfo).find(p => p === node.id || p.endsWith('/' + (node.data?.label || '')));
+                        if (filePath && fileInfo[filePath]) {
+                          // Trigger analysis on the file
+                          const ext = filePath.split('.').pop()?.toLowerCase();
+                          const langMap = { py: 'python', java: 'java', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', cpp: 'cpp', c: 'c' };
+                          const lang = langMap[ext] || 'python';
+                          // We need to find the file content - it should be in the tree
+                          const findContent = (tree, targetPath) => {
+                            const parts = targetPath.split('/');
+                            let current = tree;
+                            for (const part of parts) {
+                              if (current?.children?.[part]) current = current.children[part];
+                              else return null;
+                            }
+                            return current?.content;
+                          };
+                          const content = findContent(githubTree, filePath);
+                          if (content) {
+                            setLoading(true);
+                            axios.post('http://127.0.0.1:8000/analyze', { code: content, language: lang })
+                              .then(res => { if (!res.data.error) setAnalysisResult(res.data); })
+                              .catch(err => console.error('Analysis failed:', err))
+                              .finally(() => setLoading(false));
+                          }
+                        }
+                      }
+                    }}
+                    graphMemory={graphMemory}
+                    setGraphMemory={setGraphMemory}
+                    memoryKey="github:depGraph"
+                  />
+                </>
+              ) : sidebarView === "github" && githubFlowchartFile && analysisResult?.func_dep_graph && !currentFunc ? (
+                <>
+                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
+                    <button
+                      onClick={() => { setGithubFlowchartFile(null); setAnalysisResult(null); }}
+                      style={{
+                        padding: '6px 12px', background: '#333', color: '#fff',
+                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
+                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
+                      }}
+                    >
+                      ← Back to Repo Map
+                    </button>
+                  </div>
+                  <FuncDepGraph
+                    depData={analysisResult.func_dep_graph}
+                    onFuncClick={(funcName) => handleAnalyze(funcName)}
+                    graphMemory={graphMemory}
+                    setGraphMemory={setGraphMemory}
+                    memoryKey={`${githubFlowchartFile}:funcDep`}
+                  />
+                </>
+              ) : sidebarView === "github" && githubFlowchartFile && analysisResult?.graph_data ? (
+                <>
+                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
+                    <button
+                      onClick={() => { setGithubFlowchartFile(null); setAnalysisResult(null); }}
+                      style={{
+                        padding: '6px 12px', background: '#333', color: '#fff',
+                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
+                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
+                      }}
+                    >
+                      ← Back to Repo Map
+                    </button>
+                  </div>
+                  <FlowGraph
+                    ref={graphRef}
+                    data={analysisResult.graph_data}
+                    onNodeClick={onGraphNodeClick}
+                    graphMemory={graphMemory}
+                    setGraphMemory={setGraphMemory}
+                    memoryKey={`${githubFlowchartFile}:${currentFunc || 'full'}`}
+                    crossFileData={crossFileData}
+                    currentFilePath={githubFlowchartFile}
+                  />
+                </>
+              ) : sidebarView === "github" && !githubBlueprintData ? (
+                <div style={centerMsgStyle}>
+                  <p>🐙 GitHub Explorer</p>
+                  <p style={{ fontSize: "0.8rem" }}>Load a repo and analyze it to see its architecture.</p>
                 </div>
               ) : analysisResult && analysisResult.func_dep_graph && !currentFunc ? (
                 <FuncDepGraph
@@ -3445,6 +3748,106 @@ const NewApp = () => {
                 border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer',
                 fontSize: '0.8rem', fontWeight: 600,
               }}>Save Key</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GitHub Repo Overview Popup */}
+      {showGithubPopup && githubQuickStats && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+        }}
+          onClick={() => setShowGithubPopup(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#252526', borderRadius: '16px', padding: '28px 32px',
+              border: '1px solid #444', width: '420px', maxWidth: '90vw',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <Github size={22} color="#fff" />
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                  {githubQuickStats.owner}/{githubQuickStats.repo}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#888', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                  <GitBranch size={10} /> {githubQuickStats.branch}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ background: '#1e1e1e', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#4caf50' }}>{githubQuickStats.totalFiles}</div>
+                <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '2px' }}>Total Files</div>
+              </div>
+              <div style={{ background: '#1e1e1e', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#ff9800' }}>{githubQuickStats.codeFiles}</div>
+                <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '2px' }}>Code Files</div>
+              </div>
+              <div style={{ background: '#1e1e1e', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#00bcd4' }}>
+                  {githubQuickStats.totalSize > 1048576 ? `${(githubQuickStats.totalSize / 1048576).toFixed(1)}MB` : githubQuickStats.totalSize > 1024 ? `${(githubQuickStats.totalSize / 1024).toFixed(0)}KB` : `${githubQuickStats.totalSize}B`}
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '2px' }}>Est. Size</div>
+              </div>
+            </div>
+
+            {/* Language Breakdown */}
+            {Object.keys(githubQuickStats.langBreakdown).length > 0 && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Languages</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {Object.entries(githubQuickStats.langBreakdown)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([lang, count]) => {
+                      const langColors = { Python: '#3572A5', Java: '#b07219', JavaScript: '#f1e05a', TypeScript: '#3178c6', 'C++': '#f34b7d', C: '#555555', 'C/C++': '#555555', 'C#': '#178600', Go: '#00ADD8', Rust: '#dea584', Ruby: '#701516' };
+                      return (
+                        <div key={lang} style={{
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                          background: '#1e1e1e', padding: '4px 10px', borderRadius: '12px',
+                          fontSize: '0.72rem', color: '#ccc',
+                        }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: langColors[lang] || '#888' }} />
+                          {lang} <span style={{ color: '#666' }}>({count})</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => setShowGithubPopup(false)}
+                style={{
+                  flex: 1, padding: '10px', background: 'transparent', border: '1px solid #555',
+                  borderRadius: '8px', color: '#888', cursor: 'pointer', fontSize: '0.8rem',
+                }}
+              >
+                Browse Only
+              </button>
+              <button
+                onClick={handleAnalyzeGithubRepo}
+                style={{
+                  flex: 2, padding: '10px',
+                  background: 'linear-gradient(135deg, #238636, #2ea043)',
+                  border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer',
+                  fontSize: '0.85rem', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                }}
+              >
+                <Zap size={14} /> Analyze Repo
+              </button>
             </div>
           </div>
         </div>
