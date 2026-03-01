@@ -700,7 +700,17 @@ const FuncDepNode = ({ data }) => {
   const langColors = {
     python: "#2196f3", java: "#f44336", javascript: "#ffeb3b", typescript: "#2196f3", cpp: "#9c27b0", c: "#9c27b0"
   };
-  const baseColor = langColors[lang] || "#888";
+
+  // Heatmap mode: color by complexity (green → yellow → orange → red)
+  const getHeatmapColor = (complexity) => {
+    const clamped = Math.min(Math.max(complexity, 0), 15);
+    const t = clamped / 15; // 0..1
+    if (t < 0.33) return `hsl(${120 - t * 180}, 70%, 45%)`; // green → yellow
+    if (t < 0.66) return `hsl(${60 - (t - 0.33) * 180}, 80%, 45%)`; // yellow → orange
+    return `hsl(${0}, 85%, ${50 - (t - 0.66) * 30}%)`; // orange → dark red
+  };
+
+  const baseColor = data.heatmapMode ? getHeatmapColor(cx) : (langColors[lang] || "#888");
 
   // If cyclic, force red to indicate danger. Otherwise, keep lang color. 
   // Wait, the prompt says "python should be blue, etc". 
@@ -775,7 +785,7 @@ const FuncDepNode = ({ data }) => {
   );
 };
 
-const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, onNodeDoubleClick }) => {
+const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, onNodeDoubleClick, searchQuery = '', heatmapMode = false }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -859,6 +869,34 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
       setEdges(styledEdges);
     }
   }, [depData, memoryKey, graphMemory, setNodes, setEdges, computeLayout, styleEdges]);
+
+  // Search-based highlighting
+  useEffect(() => {
+    if (!searchQuery) {
+      // Reset all nodes to full opacity
+      setNodes(nds => nds.map(n => ({ ...n, style: { ...n.style, opacity: 1, transition: 'opacity 0.2s' } })));
+      setEdges(eds => eds.map(e => ({ ...e, style: { ...e.style, opacity: e.data?.is_cyclic ? 1 : 0.7 } })));
+      return;
+    }
+    const q = searchQuery.toLowerCase();
+    const matchingIds = new Set();
+    setNodes(nds => nds.map(n => {
+      const label = (n.data?.label || n.id || '').toLowerCase();
+      const matches = label.includes(q);
+      if (matches) matchingIds.add(n.id);
+      return { ...n, style: { ...n.style, opacity: matches ? 1 : 0.12, transition: 'opacity 0.2s' } };
+    }));
+    setEdges(eds => eds.map(e => ({
+      ...e, style: { ...e.style, opacity: (matchingIds.has(e.source) || matchingIds.has(e.target)) ? 0.8 : 0.06 }
+    })));
+  }, [searchQuery, setNodes, setEdges]);
+
+  // Heatmap mode propagation
+  useEffect(() => {
+    setNodes(nds => nds.map(n => ({
+      ...n, data: { ...n.data, heatmapMode }
+    })));
+  }, [heatmapMode, setNodes]);
 
   // Save positions when nodes are dragged
   const handleNodesChange = useCallback((changes) => {
@@ -1345,7 +1383,7 @@ const fileDepGraphNodeTypes = {
   fileNode: FileDepNode
 };
 
-const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory, crossFileData, onNodeDoubleClick }) => {
+const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory, crossFileData, onNodeDoubleClick, searchQuery = '' }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [hoveredNode, setHoveredNode] = useState(null);
@@ -1568,6 +1606,22 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
     }
   }, [selectedFile, nodes.length, edges.length, updateGraphStyles]); // Depend on nodes/edges length to trigger after layout
 
+  // 2b. Search-based highlighting
+  useEffect(() => {
+    if (!searchQuery) return; // let selection logic handle normal state
+    const q = searchQuery.toLowerCase();
+    const matchingIds = new Set();
+    setNodes(nds => nds.map(n => {
+      const label = (n.data?.label || n.id || '').toLowerCase();
+      const matches = label.includes(q);
+      if (matches) matchingIds.add(n.id);
+      return { ...n, data: { ...n.data, isDimmed: !matches, isSelected: n.id === selectedFile } };
+    }));
+    setEdges(eds => eds.map(e => ({
+      ...e, style: { ...e.style, opacity: (matchingIds.has(e.source) || matchingIds.has(e.target)) ? 0.8 : 0.06 }
+    })));
+  }, [searchQuery, setNodes, setEdges, selectedFile]);
+
   // 3. Drag Persistence
   const onNodeDragStop = useCallback((event, node) => {
     setNodes(nds => {
@@ -1650,6 +1704,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
 const NewApp = () => {
   // UI State
   const [sidebarView, setSidebarView] = useState("explorer");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState("split");
   const [currentFunc, setCurrentFunc] = useState(null);
 
@@ -2044,6 +2099,8 @@ const NewApp = () => {
 
   // 4. GRAPH LAYOUT MEMORY STATE
   const [graphMemory, setGraphMemory] = useState({});
+  const [graphSearchQuery, setGraphSearchQuery] = useState('');
+  const [heatmapMode, setHeatmapMode] = useState(false);
 
   // AI Explanation state
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('codemap_gemini_key') || '');
@@ -2668,7 +2725,7 @@ const NewApp = () => {
       <div style={{ width: "50px", background: "#333", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: "25px" }}>
 
         <div
-          onClick={() => setSidebarView("explorer")}
+          onClick={() => { setSidebarView("explorer"); setSidebarCollapsed(false); }}
           style={{ cursor: "pointer", borderLeft: sidebarView === "explorer" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="Project Explorer"
         >
@@ -2676,7 +2733,7 @@ const NewApp = () => {
         </div>
 
         <div
-          onClick={() => setSidebarView("snippets")}
+          onClick={() => { setSidebarView("snippets"); setSidebarCollapsed(false); }}
           style={{ cursor: "pointer", borderLeft: sidebarView === "snippets" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="Code Snippets"
         >
@@ -2684,7 +2741,7 @@ const NewApp = () => {
         </div>
 
         <div
-          onClick={() => setSidebarView("github")}
+          onClick={() => { setSidebarView("github"); setSidebarCollapsed(false); }}
           style={{ cursor: "pointer", borderLeft: sidebarView === "github" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="GitHub Explorer"
         >
@@ -2692,308 +2749,496 @@ const NewApp = () => {
         </div>
 
         <div
-          onClick={() => setSidebarView("blueprint")}
+          onClick={() => { setSidebarView("blueprint"); setSidebarCollapsed(false); }}
           style={{ cursor: "pointer", borderLeft: sidebarView === "blueprint" ? "2px solid #7c4dff" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="Project Blueprint"
         >
           <LayoutDashboard size={24} color={sidebarView === "blueprint" ? "#b388ff" : "#777"} />
         </div>
 
-        <Settings size={24} color="#777" style={{ marginTop: "auto", cursor: "pointer" }} />
+        <div
+          onClick={() => setSidebarCollapsed(c => !c)}
+          style={{ cursor: "pointer", marginTop: "auto", width: "100%", display: "flex", justifyContent: "center", padding: "8px 0", transition: "transform 0.2s" }}
+          title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          <ChevronRight size={20} color="#777" style={{ transform: sidebarCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.25s ease' }} />
+        </div>
       </div>
 
       {/* 2. SIDEBAR CONTENT */}
-      <div style={{ width: `${sidebarWidth}px`, background: "#252526", display: "flex", flexDirection: "column", borderRight: "none", flexShrink: 0 }}>
+      {!sidebarCollapsed && (
+        <div style={{ width: `${sidebarWidth}px`, background: "#252526", display: "flex", flexDirection: "column", borderRight: "none", flexShrink: 0 }}>
 
-        {/* VIEW A: EXPLORER - Now using FileExplorer component */}
-        {sidebarView === "explorer" && (
-          <FileExplorer
-            fileTree={fileTree}
-            setFileTree={setFileTree}
-            selectedFile={selectedFilePath}
-            onFileSelect={handleFileSelect}
-            dependencies={dependencies}
-            onUploadFiles={handleUploadFiles}
-            onUploadFolder={handleUploadFolder}
-            onUploadZip={handleUploadZip}
-          />
-        )}
+          {/* VIEW A: EXPLORER - Now using FileExplorer component */}
+          {sidebarView === "explorer" && (
+            <FileExplorer
+              fileTree={fileTree}
+              setFileTree={setFileTree}
+              selectedFile={selectedFilePath}
+              onFileSelect={handleFileSelect}
+              dependencies={dependencies}
+              onUploadFiles={handleUploadFiles}
+              onUploadFolder={handleUploadFolder}
+              onUploadZip={handleUploadZip}
+            />
+          )}
 
-        {/* VIEW B: SNIPPETS */}
-        {sidebarView === "snippets" && (
-          <>
-            <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              SNIPPETS
-              <button
-                onClick={handleCreateSnippet}
-                style={{ background: "none", border: "1px solid #4caf50", color: "#4caf50", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.75rem" }}
-                title="New Snippet"
-              >
-                <Plus size={12} /> New
-              </button>
-            </div>
-            <div style={{ padding: "0 10px", overflowY: "auto", flex: 1 }}>
-              {snippets.map(snippet => (
-                <div
-                  key={snippet.id}
-                  style={{
-                    display: "flex", alignItems: "center", gap: "6px",
-                    padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                    background: activeSnippetId === snippet.id ? "#2a2d2e" : "transparent",
-                    borderLeft: activeSnippetId === snippet.id ? "2px solid #4caf50" : "2px solid transparent",
-                    fontSize: "0.8rem", color: activeSnippetId === snippet.id ? "#fff" : "#aaa"
-                  }}
-                  onClick={() => setActiveSnippetId(snippet.id)}
+          {/* VIEW B: SNIPPETS */}
+          {sidebarView === "snippets" && (
+            <>
+              <div style={{ padding: "15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                SNIPPETS
+                <button
+                  onClick={handleCreateSnippet}
+                  style={{ background: "none", border: "1px solid #4caf50", color: "#4caf50", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.75rem" }}
+                  title="New Snippet"
                 >
-                  <FileCode size={14} color={activeSnippetId === snippet.id ? "#4caf50" : "#666"} />
-                  <div style={{ flex: 1, overflow: "hidden" }}>
-                    {renamingSnippetId === snippet.id ? (
-                      <input
-                        autoFocus
-                        defaultValue={snippet.name}
-                        onBlur={(e) => handleRenameSnippet(snippet.id, e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSnippet(snippet.id, e.target.value); if (e.key === 'Escape') setRenamingSnippetId(null); }}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ background: "#1e1e1e", border: "1px solid #4caf50", color: "#fff", width: "100%", padding: "2px 4px", borderRadius: "3px", fontSize: "0.8rem", outline: "none" }}
+                  <Plus size={12} /> New
+                </button>
+              </div>
+              <div style={{ padding: "0 10px", overflowY: "auto", flex: 1 }}>
+                {snippets.map(snippet => (
+                  <div
+                    key={snippet.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "6px",
+                      padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                      background: activeSnippetId === snippet.id ? "#2a2d2e" : "transparent",
+                      borderLeft: activeSnippetId === snippet.id ? "2px solid #4caf50" : "2px solid transparent",
+                      fontSize: "0.8rem", color: activeSnippetId === snippet.id ? "#fff" : "#aaa"
+                    }}
+                    onClick={() => setActiveSnippetId(snippet.id)}
+                  >
+                    <FileCode size={14} color={activeSnippetId === snippet.id ? "#4caf50" : "#666"} />
+                    <div style={{ flex: 1, overflow: "hidden" }}>
+                      {renamingSnippetId === snippet.id ? (
+                        <input
+                          autoFocus
+                          defaultValue={snippet.name}
+                          onBlur={(e) => handleRenameSnippet(snippet.id, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSnippet(snippet.id, e.target.value); if (e.key === 'Escape') setRenamingSnippetId(null); }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ background: "#1e1e1e", border: "1px solid #4caf50", color: "#fff", width: "100%", padding: "2px 4px", borderRadius: "3px", fontSize: "0.8rem", outline: "none" }}
+                        />
+                      ) : (
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{snippet.name}</span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: "0.6rem", color: "#555", textTransform: "uppercase", flexShrink: 0 }}>{snippet.language}</span>
+                    <Edit3
+                      size={12} color="#666" style={{ cursor: "pointer", flexShrink: 0 }}
+                      onClick={(e) => { e.stopPropagation(); setRenamingSnippetId(snippet.id); }}
+                      title="Rename"
+                    />
+                    {snippets.length > 1 && (
+                      <Trash2
+                        size={12} color="#555" style={{ cursor: "pointer", flexShrink: 0 }}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSnippet(snippet.id); }}
+                        title="Delete"
                       />
-                    ) : (
-                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{snippet.name}</span>
                     )}
                   </div>
-                  <span style={{ fontSize: "0.6rem", color: "#555", textTransform: "uppercase", flexShrink: 0 }}>{snippet.language}</span>
-                  <Edit3
-                    size={12} color="#666" style={{ cursor: "pointer", flexShrink: 0 }}
-                    onClick={(e) => { e.stopPropagation(); setRenamingSnippetId(snippet.id); }}
-                    title="Rename"
+                ))}
+
+                <div style={{ marginTop: "20px", borderTop: "1px solid #333", paddingTop: "10px" }}>
+                  <button style={actionBtnStyle} onClick={handleLoadSnippet}>
+                    Inject to {activeFileName}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* VIEW C: GITHUB */}
+          {sidebarView === "github" && (
+            <>
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Github size={14} color="#fff" /> GitHub
+              </div>
+
+              {/* Repo Input */}
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <input
+                    type="text"
+                    value={repoInput}
+                    onChange={(e) => setRepoInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLoadRepo(); }}
+                    placeholder="owner/repo"
+                    style={{
+                      flex: 1, background: "#1e1e1e", border: "1px solid #444", borderRadius: "4px",
+                      padding: "6px 10px", color: "#d4d4d4", fontSize: "0.8rem", outline: "none"
+                    }}
                   />
-                  {snippets.length > 1 && (
-                    <Trash2
-                      size={12} color="#555" style={{ cursor: "pointer", flexShrink: 0 }}
-                      onClick={(e) => { e.stopPropagation(); handleDeleteSnippet(snippet.id); }}
-                      title="Delete"
-                    />
-                  )}
-                </div>
-              ))}
-
-              <div style={{ marginTop: "20px", borderTop: "1px solid #333", paddingTop: "10px" }}>
-                <button style={actionBtnStyle} onClick={handleLoadSnippet}>
-                  Inject to {activeFileName}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* VIEW C: GITHUB */}
-        {sidebarView === "github" && (
-          <>
-            <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
-              <Github size={14} color="#fff" /> GitHub
-            </div>
-
-            {/* Repo Input */}
-            <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <input
-                  type="text"
-                  value={repoInput}
-                  onChange={(e) => setRepoInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleLoadRepo(); }}
-                  placeholder="owner/repo"
-                  style={{
-                    flex: 1, background: "#1e1e1e", border: "1px solid #444", borderRadius: "4px",
-                    padding: "6px 10px", color: "#d4d4d4", fontSize: "0.8rem", outline: "none"
-                  }}
-                />
-                <button
-                  onClick={handleLoadRepo}
-                  disabled={githubLoadingRepo || !repoInput.trim()}
-                  style={{
-                    background: githubLoadingRepo ? "#333" : "#238636", border: "none", borderRadius: "4px",
-                    padding: "6px 12px", color: "#fff", fontSize: "0.75rem", cursor: githubLoadingRepo ? "wait" : "pointer",
-                    display: "flex", alignItems: "center", gap: "4px"
-                  }}
-                >
-                  {githubLoadingRepo ? <Loader size={12} className="spin" /> : <Play size={12} />}
-                  {githubLoadingRepo ? 'Loading' : 'Load'}
-                </button>
-              </div>
-
-              {githubError && (
-                <div style={{ marginTop: "8px", padding: "6px 8px", background: "#3b1d1d", border: "1px solid #6b3030", borderRadius: "4px", fontSize: "0.75rem", color: "#f87171" }}>
-                  {githubError}
-                </div>
-              )}
-
-              {githubRepoInfo && (
-                <div style={{ marginTop: "8px", fontSize: "0.7rem", color: "#666", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <GitBranch size={10} /> {githubRepoInfo.branch}
-                </div>
-              )}
-            </div>
-
-            {/* Rate limit indicator (token is now in API Settings modal) */}
-            {githubRateInfo && (
-              <div
-                onClick={() => setShowApiKeyModal(true)}
-                style={{
-                  padding: "6px 12px", borderBottom: "1px solid #333", cursor: "pointer",
-                  display: "flex", alignItems: "center", gap: "6px", fontSize: "0.65rem",
-                }}
-                title="Open API Settings to manage your GitHub token"
-              >
-                <Settings size={10} color="#888" />
-                <span style={{ color: "#888" }}>API</span>
-                <span style={{
-                  marginLeft: "auto", padding: "2px 6px", borderRadius: "8px",
-                  background: githubRateInfo.remaining < 10 ? "#f4433620" : "#23863620",
-                  color: githubRateInfo.remaining < 10 ? "#f44336" : "#4caf50",
-                }}>
-                  {githubRateInfo.remaining}/{githubRateInfo.limit} left
-                </span>
-              </div>
-            )}
-
-            {/* Analysis Loading */}
-            {githubBlueprintLoading && (
-              <div style={{ padding: "20px 12px", textAlign: "center", borderBottom: "1px solid #333" }}>
-                <Loader size={20} className="spin" style={{ marginBottom: "8px" }} />
-                <div style={{ fontSize: "0.75rem", color: "#4caf50" }}>Analyzing repository...</div>
-                <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "4px" }}>Fetching and processing code files</div>
-              </div>
-            )}
-
-            {/* Project Stats (after analysis) */}
-            {githubBlueprintData?.project_stats && (
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-                <div style={{ fontSize: "0.65rem", color: "#238636", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-                  {[
-                    { label: "Files", value: githubBlueprintData.project_stats.total_files, color: "#4caf50" },
-                    { label: "Functions", value: githubBlueprintData.project_stats.total_functions, color: "#ff9800" },
-                    { label: "Lines", value: githubBlueprintData.project_stats.total_lines, color: "#00bcd4" },
-                    { label: "Languages", value: githubBlueprintData.project_stats.languages.length, color: "#e040fb" },
-                  ].map((s, i) => (
-                    <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
-                      <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
-                      <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Health Insights (after analysis) */}
-            {githubInsights && (
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-                <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {githubInsights.cyclesCount > 0 && (
-                    <div style={{ background: "#f4433615", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #f44336", fontSize: "0.75rem", color: "#ffcdd2" }}>
-                      <span style={{ fontWeight: "bold" }}>⚠️ {githubInsights.cyclesCount} files</span> in import cycles
-                    </div>
-                  )}
-                  {githubInsights.mostImported && (
-                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #238636", fontSize: "0.75rem", color: "#ccc" }}>
-                      <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
-                      {githubInsights.mostImported.file} ({githubInsights.mostImported.count} imports)
-                    </div>
-                  )}
-                  {githubInsights.isolatedCount > 0 && (
-                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
-                      <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {githubInsights.isolatedCount}
-                    </div>
-                  )}
-                  {!githubInsights.cyclesCount && !githubInsights.mostImported && !githubInsights.isolatedCount > 0 && (
-                    <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>No special insights detected.</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Commits (for selected file) */}
-            {githubFileCommits.length > 0 && githubSelectedFile && (() => {
-              const showAll = githubFileCommits._showAll;
-              const visibleCommits = showAll ? githubFileCommits : githubFileCommits.slice(0, 3);
-              return (
-                <div style={{ padding: "8px 12px", borderBottom: "1px solid #333" }}>
-                  <div
-                    style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "4px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}
-                    onClick={() => {
-                      const updated = [...githubFileCommits];
-                      updated._showAll = !showAll;
-                      setGithubFileCommits(updated);
+                  <button
+                    onClick={handleLoadRepo}
+                    disabled={githubLoadingRepo || !repoInput.trim()}
+                    style={{
+                      background: githubLoadingRepo ? "#333" : "#238636", border: "none", borderRadius: "4px",
+                      padding: "6px 12px", color: "#fff", fontSize: "0.75rem", cursor: githubLoadingRepo ? "wait" : "pointer",
+                      display: "flex", alignItems: "center", gap: "4px"
                     }}
                   >
-                    <GitBranch size={10} /> Recent Commits
-                    <span style={{ marginLeft: "auto", color: "#666", fontSize: "0.6rem" }}>
-                      {showAll ? '▲ less' : `${githubFileCommits.length} total`}
-                    </span>
-                  </div>
-                  {visibleCommits.map((c, i) => (
-                    <a
-                      key={i}
-                      href={c.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        display: "flex", alignItems: "center", gap: "6px",
-                        padding: "4px 6px", marginBottom: "2px", borderRadius: "4px",
-                        background: "transparent", textDecoration: "none",
-                        transition: "background 0.15s",
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#1e1e1e"}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    >
-                      {c.avatar && (
-                        <img src={c.avatar} alt="" style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0 }} />
-                      )}
-                      <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.7rem", color: "#aaa" }}>
-                        {c.message}
-                      </div>
-                      <span style={{ fontSize: "0.55rem", color: "#555", flexShrink: 0 }}>{c.sha}</span>
-                    </a>
-                  ))}
-                  {!showAll && githubFileCommits.length > 3 && (
-                    <div
-                      onClick={() => { const updated = [...githubFileCommits]; updated._showAll = true; setGithubFileCommits(updated); }}
-                      style={{ fontSize: "0.65rem", color: "#7c4dff", cursor: "pointer", textAlign: "center", padding: "3px 0", marginTop: "2px" }}
-                    >
-                      Show {githubFileCommits.length - 3} more…
-                    </div>
-                  )}
+                    {githubLoadingRepo ? <Loader size={12} className="spin" /> : <Play size={12} />}
+                    {githubLoadingRepo ? 'Loading' : 'Load'}
+                  </button>
                 </div>
-              );
-            })()}
 
-            {/* File List (after analysis) */}
-            {githubBlueprintData?.file_info && (
-              <>
-                <div
-                  onMouseDown={(e) => startGithubFilesDrag(e, -1)}
-                  style={{
-                    height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
-                    transition: "background 0.2s"
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
-                />
-                <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", height: `${githubFilesHeight}px`, overflowY: "auto" }}>
-                  <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px", display: "flex", justifyContent: "space-between" }}>
-                    <span>Analyzed Files</span>
-                    <span>{Object.keys(githubBlueprintData.file_info).length} files</span>
+                {githubError && (
+                  <div style={{ marginTop: "8px", padding: "6px 8px", background: "#3b1d1d", border: "1px solid #6b3030", borderRadius: "4px", fontSize: "0.75rem", color: "#f87171" }}>
+                    {githubError}
                   </div>
-                  {Object.entries(githubBlueprintData.file_info).map(([path, info]) => {
+                )}
+
+                {githubRepoInfo && (
+                  <div style={{ marginTop: "8px", fontSize: "0.7rem", color: "#666", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <GitBranch size={10} /> {githubRepoInfo.branch}
+                  </div>
+                )}
+              </div>
+
+              {/* Rate limit indicator (token is now in API Settings modal) */}
+              {githubRateInfo && (
+                <div
+                  onClick={() => setShowApiKeyModal(true)}
+                  style={{
+                    padding: "6px 12px", borderBottom: "1px solid #333", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: "6px", fontSize: "0.65rem",
+                  }}
+                  title="Open API Settings to manage your GitHub token"
+                >
+                  <Settings size={10} color="#888" />
+                  <span style={{ color: "#888" }}>API</span>
+                  <span style={{
+                    marginLeft: "auto", padding: "2px 6px", borderRadius: "8px",
+                    background: githubRateInfo.remaining < 10 ? "#f4433620" : "#23863620",
+                    color: githubRateInfo.remaining < 10 ? "#f44336" : "#4caf50",
+                  }}>
+                    {githubRateInfo.remaining}/{githubRateInfo.limit} left
+                  </span>
+                </div>
+              )}
+
+              {/* Analysis Loading */}
+              {githubBlueprintLoading && (
+                <div style={{ padding: "20px 12px", textAlign: "center", borderBottom: "1px solid #333" }}>
+                  <Loader size={20} className="spin" style={{ marginBottom: "8px" }} />
+                  <div style={{ fontSize: "0.75rem", color: "#4caf50" }}>Analyzing repository...</div>
+                  <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "4px" }}>Fetching and processing code files</div>
+                </div>
+              )}
+
+              {/* Project Stats (after analysis) */}
+              {githubBlueprintData?.project_stats && (
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                  <div style={{ fontSize: "0.65rem", color: "#238636", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                    {[
+                      { label: "Files", value: githubBlueprintData.project_stats.total_files, color: "#4caf50" },
+                      { label: "Functions", value: githubBlueprintData.project_stats.total_functions, color: "#ff9800" },
+                      { label: "Lines", value: githubBlueprintData.project_stats.total_lines, color: "#00bcd4" },
+                      { label: "Languages", value: githubBlueprintData.project_stats.languages.length, color: "#e040fb" },
+                    ].map((s, i) => (
+                      <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
+                        <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Health Insights (after analysis) */}
+              {githubInsights && (
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                  <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {githubInsights.cyclesCount > 0 && (
+                      <div style={{ background: "#f4433615", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #f44336", fontSize: "0.75rem", color: "#ffcdd2" }}>
+                        <span style={{ fontWeight: "bold" }}>⚠️ {githubInsights.cyclesCount} files</span> in import cycles
+                      </div>
+                    )}
+                    {githubInsights.mostImported && (
+                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #238636", fontSize: "0.75rem", color: "#ccc" }}>
+                        <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
+                        {githubInsights.mostImported.file} ({githubInsights.mostImported.count} imports)
+                      </div>
+                    )}
+                    {githubInsights.isolatedCount > 0 && (
+                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
+                        <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {githubInsights.isolatedCount}
+                      </div>
+                    )}
+                    {!githubInsights.cyclesCount && !githubInsights.mostImported && !githubInsights.isolatedCount > 0 && (
+                      <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>No special insights detected.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Commits (for selected file) */}
+              {githubFileCommits.length > 0 && githubSelectedFile && (() => {
+                const showAll = githubFileCommits._showAll;
+                const visibleCommits = showAll ? githubFileCommits : githubFileCommits.slice(0, 3);
+                return (
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #333" }}>
+                    <div
+                      style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "4px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}
+                      onClick={() => {
+                        const updated = [...githubFileCommits];
+                        updated._showAll = !showAll;
+                        setGithubFileCommits(updated);
+                      }}
+                    >
+                      <GitBranch size={10} /> Recent Commits
+                      <span style={{ marginLeft: "auto", color: "#666", fontSize: "0.6rem" }}>
+                        {showAll ? '▲ less' : `${githubFileCommits.length} total`}
+                      </span>
+                    </div>
+                    {visibleCommits.map((c, i) => (
+                      <a
+                        key={i}
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          display: "flex", alignItems: "center", gap: "6px",
+                          padding: "4px 6px", marginBottom: "2px", borderRadius: "4px",
+                          background: "transparent", textDecoration: "none",
+                          transition: "background 0.15s",
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "#1e1e1e"}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                      >
+                        {c.avatar && (
+                          <img src={c.avatar} alt="" style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0 }} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.7rem", color: "#aaa" }}>
+                          {c.message}
+                        </div>
+                        <span style={{ fontSize: "0.55rem", color: "#555", flexShrink: 0 }}>{c.sha}</span>
+                      </a>
+                    ))}
+                    {!showAll && githubFileCommits.length > 3 && (
+                      <div
+                        onClick={() => { const updated = [...githubFileCommits]; updated._showAll = true; setGithubFileCommits(updated); }}
+                        style={{ fontSize: "0.65rem", color: "#7c4dff", cursor: "pointer", textAlign: "center", padding: "3px 0", marginTop: "2px" }}
+                      >
+                        Show {githubFileCommits.length - 3} more…
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* File List (after analysis) */}
+              {githubBlueprintData?.file_info && (
+                <>
+                  <div
+                    onMouseDown={(e) => startGithubFilesDrag(e, -1)}
+                    style={{
+                      height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
+                      transition: "background 0.2s"
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+                  />
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", height: `${githubFilesHeight}px`, overflowY: "auto" }}>
+                    <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px", display: "flex", justifyContent: "space-between" }}>
+                      <span>Analyzed Files</span>
+                      <span>{Object.keys(githubBlueprintData.file_info).length} files</span>
+                    </div>
+                    {Object.entries(githubBlueprintData.file_info).map(([path, info]) => {
+                      const filename = path.split('/').pop() || path;
+                      const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                      return (
+                        <div
+                          key={path}
+                          style={{
+                            padding: "4px 8px", marginBottom: "2px", borderRadius: "4px",
+                            display: "flex", alignItems: "center", gap: "6px",
+                            fontSize: "0.75rem", color: "#aaa",
+                          }}
+                        >
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
+                          <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
+                          <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div
+                    onMouseDown={(e) => startGithubFilesDrag(e, 1)}
+                    style={{
+                      height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
+                      transition: "background 0.2s", marginBottom: "4px"
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+                  />
+                </>
+              )}
+
+              {/* Remote Tree */}
+              <GitHubExplorer
+                treeData={githubTree}
+                selectedFile={githubSelectedFile}
+                onFileSelect={handleGithubFileSelect}
+                loadingFile={githubLoadingFile}
+                repoInfo={githubRepoInfo}
+                dependencies={githubDependencies}
+              />
+            </>
+          )}
+
+          {/* VIEW D: PROJECT BLUEPRINT */}
+          {sidebarView === "blueprint" && (
+            <>
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
+                <LayoutDashboard size={14} color="#7c4dff" /> Project Blueprint
+              </div>
+
+              {/* Upload Area */}
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <label style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                  padding: "10px", border: "2px dashed #7c4dff44", borderRadius: "8px",
+                  cursor: "pointer", color: "#b388ff", fontSize: "0.78rem", fontWeight: 600,
+                  background: "#7c4dff08", transition: "all 0.2s",
+                }}>
+                  <FolderOpen size={16} />
+                  {blueprintLoading ? "Analyzing..." : "Upload Project (ZIP)"}
+                  <input
+                    type="file"
+                    accept=".zip"
+                    style={{ display: "none" }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      e.target.value = '';
+
+                      setBlueprintLoading(true);
+                      setBlueprintData(null);
+
+                      try {
+                        const JSZip = (await import('jszip')).default;
+                        const zip = await JSZip.loadAsync(file);
+                        const codeExts = ['.py', '.java', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.cc', '.c', '.h', '.hpp', '.cs', '.rb', '.go', '.rs', '.kt', '.swift'];
+                        const newTree = { type: 'folder', name: file.name.replace('.zip', ''), children: {} };
+                        const projectFiles = [];
+
+                        for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+                          if (zipEntry.dir) continue;
+                          const isCode = codeExts.some(ext => relativePath.toLowerCase().endsWith(ext));
+                          const content = isCode ? await zipEntry.async('string') : '';
+
+                          // Build tree
+                          const pathParts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
+                          let current = newTree;
+                          for (let i = 0; i < pathParts.length - 1; i++) {
+                            if (!current.children[pathParts[i]]) {
+                              current.children[pathParts[i]] = { type: 'folder', name: pathParts[i], children: {} };
+                            }
+                            current = current.children[pathParts[i]];
+                          }
+                          const fileName = pathParts[pathParts.length - 1];
+                          current.children[fileName] = { type: 'file', name: fileName, content };
+
+                          if (isCode) {
+                            projectFiles.push({ path: relativePath, content });
+                          }
+                        }
+
+                        setBlueprintTree(newTree);
+                        console.log('[Blueprint] Code files found:', projectFiles.length, projectFiles.map(f => f.path));
+
+                        if (projectFiles.length > 0) {
+                          const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
+                          console.log('[Blueprint] API response:', res.status, JSON.stringify(res.data).slice(0, 300));
+                          if (!res.data.error) {
+                            setBlueprintData(res.data);
+                            console.log('[Blueprint] Data set, nodes:', res.data.dep_graph?.nodes?.length);
+                          } else {
+                            console.error('[Blueprint] API error:', res.data.error);
+                          }
+                        }
+                      } catch (err) {
+                        console.error('Blueprint upload failed:', err);
+                        alert('Failed to process project ZIP.');
+                      } finally {
+                        setBlueprintLoading(false);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              {/* Project Stats */}
+              {blueprintData?.project_stats && (
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                  <div style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                    {[
+                      { label: "Files", value: blueprintData.project_stats.total_files, color: "#4caf50" },
+                      { label: "Functions", value: blueprintData.project_stats.total_functions, color: "#ff9800" },
+                      { label: "Lines", value: blueprintData.project_stats.total_lines, color: "#00bcd4" },
+                      { label: "Languages", value: blueprintData.project_stats.languages.length, color: "#e040fb" },
+                    ].map((s, i) => (
+                      <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
+                        <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Health Insights */}
+              {blueprintInsights && (
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                  <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {blueprintInsights.cyclesCount > 0 && (
+                      <div style={{ background: "#f4433615", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #f44336", fontSize: "0.75rem", color: "#ffcdd2" }}>
+                        <span style={{ fontWeight: "bold" }}>⚠️ {blueprintInsights.cyclesCount} files</span> in import cycles
+                      </div>
+                    )}
+                    {blueprintInsights.mostImported && (
+                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #7c4dff", fontSize: "0.75rem", color: "#ccc" }}>
+                        <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
+                        {blueprintInsights.mostImported.file} ({blueprintInsights.mostImported.count} imports)
+                      </div>
+                    )}
+                    {blueprintInsights.isolatedCount > 0 && (
+                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
+                        <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {blueprintInsights.isolatedCount}
+                      </div>
+                    )}
+                    {!blueprintInsights.cyclesCount && !blueprintInsights.mostImported && !blueprintInsights.isolatedCount > 0 && (
+                      <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>No special insights detected.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* File List */}
+              {blueprintData?.file_info && (
+                <div style={{ padding: "8px 12px", flex: 1, overflowY: "auto" }}>
+                  <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Files</div>
+                  {Object.entries(blueprintData.file_info).map(([path, info]) => {
                     const filename = path.split('/').pop() || path;
+                    const isSelected = blueprintSelectedFile === path;
                     const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
                     return (
                       <div
                         key={path}
+                        onClick={() => setBlueprintSelectedFile(path)}
                         style={{
-                          padding: "4px 8px", marginBottom: "2px", borderRadius: "4px",
+                          padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                          background: isSelected ? "#2a2d2e" : "transparent",
+                          borderLeft: `2px solid ${isSelected ? "#7c4dff" : "transparent"}`,
                           display: "flex", alignItems: "center", gap: "6px",
-                          fontSize: "0.75rem", color: "#aaa",
+                          fontSize: "0.75rem", color: isSelected ? "#fff" : "#aaa",
                         }}
                       >
                         <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
@@ -3003,211 +3248,33 @@ const NewApp = () => {
                     );
                   })}
                 </div>
-                <div
-                  onMouseDown={(e) => startGithubFilesDrag(e, 1)}
-                  style={{
-                    height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
-                    transition: "background 0.2s", marginBottom: "4px"
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
-                  onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
-                />
-              </>
-            )}
+              )}
 
-            {/* Remote Tree */}
-            <GitHubExplorer
-              treeData={githubTree}
-              selectedFile={githubSelectedFile}
-              onFileSelect={handleGithubFileSelect}
-              loadingFile={githubLoadingFile}
-              repoInfo={githubRepoInfo}
-              dependencies={githubDependencies}
-            />
-          </>
-        )}
-
-        {/* VIEW D: PROJECT BLUEPRINT */}
-        {sidebarView === "blueprint" && (
-          <>
-            <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
-              <LayoutDashboard size={14} color="#7c4dff" /> Project Blueprint
-            </div>
-
-            {/* Upload Area */}
-            <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-              <label style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                padding: "10px", border: "2px dashed #7c4dff44", borderRadius: "8px",
-                cursor: "pointer", color: "#b388ff", fontSize: "0.78rem", fontWeight: 600,
-                background: "#7c4dff08", transition: "all 0.2s",
-              }}>
-                <FolderOpen size={16} />
-                {blueprintLoading ? "Analyzing..." : "Upload Project (ZIP)"}
-                <input
-                  type="file"
-                  accept=".zip"
-                  style={{ display: "none" }}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    e.target.value = '';
-
-                    setBlueprintLoading(true);
-                    setBlueprintData(null);
-
-                    try {
-                      const JSZip = (await import('jszip')).default;
-                      const zip = await JSZip.loadAsync(file);
-                      const codeExts = ['.py', '.java', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.cc', '.c', '.h', '.hpp', '.cs', '.rb', '.go', '.rs', '.kt', '.swift'];
-                      const newTree = { type: 'folder', name: file.name.replace('.zip', ''), children: {} };
-                      const projectFiles = [];
-
-                      for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
-                        if (zipEntry.dir) continue;
-                        const isCode = codeExts.some(ext => relativePath.toLowerCase().endsWith(ext));
-                        const content = isCode ? await zipEntry.async('string') : '';
-
-                        // Build tree
-                        const pathParts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
-                        let current = newTree;
-                        for (let i = 0; i < pathParts.length - 1; i++) {
-                          if (!current.children[pathParts[i]]) {
-                            current.children[pathParts[i]] = { type: 'folder', name: pathParts[i], children: {} };
-                          }
-                          current = current.children[pathParts[i]];
-                        }
-                        const fileName = pathParts[pathParts.length - 1];
-                        current.children[fileName] = { type: 'file', name: fileName, content };
-
-                        if (isCode) {
-                          projectFiles.push({ path: relativePath, content });
-                        }
-                      }
-
-                      setBlueprintTree(newTree);
-                      console.log('[Blueprint] Code files found:', projectFiles.length, projectFiles.map(f => f.path));
-
-                      if (projectFiles.length > 0) {
-                        const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
-                        console.log('[Blueprint] API response:', res.status, JSON.stringify(res.data).slice(0, 300));
-                        if (!res.data.error) {
-                          setBlueprintData(res.data);
-                          console.log('[Blueprint] Data set, nodes:', res.data.dep_graph?.nodes?.length);
-                        } else {
-                          console.error('[Blueprint] API error:', res.data.error);
-                        }
-                      }
-                    } catch (err) {
-                      console.error('Blueprint upload failed:', err);
-                      alert('Failed to process project ZIP.');
-                    } finally {
-                      setBlueprintLoading(false);
-                    }
-                  }}
-                />
-              </label>
-            </div>
-
-            {/* Project Stats */}
-            {blueprintData?.project_stats && (
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-                <div style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-                  {[
-                    { label: "Files", value: blueprintData.project_stats.total_files, color: "#4caf50" },
-                    { label: "Functions", value: blueprintData.project_stats.total_functions, color: "#ff9800" },
-                    { label: "Lines", value: blueprintData.project_stats.total_lines, color: "#00bcd4" },
-                    { label: "Languages", value: blueprintData.project_stats.languages.length, color: "#e040fb" },
-                  ].map((s, i) => (
-                    <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
-                      <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
-                      <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
-                    </div>
-                  ))}
+              {!blueprintData && !blueprintLoading && (
+                <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.78rem", fontStyle: "italic" }}>
+                  Upload a project ZIP to see its architecture.
                 </div>
-              </div>
-            )}
-
-            {/* Health Insights */}
-            {blueprintInsights && (
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
-                <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {blueprintInsights.cyclesCount > 0 && (
-                    <div style={{ background: "#f4433615", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #f44336", fontSize: "0.75rem", color: "#ffcdd2" }}>
-                      <span style={{ fontWeight: "bold" }}>⚠️ {blueprintInsights.cyclesCount} files</span> in import cycles
-                    </div>
-                  )}
-                  {blueprintInsights.mostImported && (
-                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #7c4dff", fontSize: "0.75rem", color: "#ccc" }}>
-                      <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
-                      {blueprintInsights.mostImported.file} ({blueprintInsights.mostImported.count} imports)
-                    </div>
-                  )}
-                  {blueprintInsights.isolatedCount > 0 && (
-                    <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
-                      <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {blueprintInsights.isolatedCount}
-                    </div>
-                  )}
-                  {!blueprintInsights.cyclesCount && !blueprintInsights.mostImported && !blueprintInsights.isolatedCount > 0 && (
-                    <div style={{ fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>No special insights detected.</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* File List */}
-            {blueprintData?.file_info && (
-              <div style={{ padding: "8px 12px", flex: 1, overflowY: "auto" }}>
-                <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Files</div>
-                {Object.entries(blueprintData.file_info).map(([path, info]) => {
-                  const filename = path.split('/').pop() || path;
-                  const isSelected = blueprintSelectedFile === path;
-                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
-                  return (
-                    <div
-                      key={path}
-                      onClick={() => setBlueprintSelectedFile(path)}
-                      style={{
-                        padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                        background: isSelected ? "#2a2d2e" : "transparent",
-                        borderLeft: `2px solid ${isSelected ? "#7c4dff" : "transparent"}`,
-                        display: "flex", alignItems: "center", gap: "6px",
-                        fontSize: "0.75rem", color: isSelected ? "#fff" : "#aaa",
-                      }}
-                    >
-                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
-                      <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
-                      <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {!blueprintData && !blueprintLoading && (
-              <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.78rem", fontStyle: "italic" }}>
-                Upload a project ZIP to see its architecture.
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* SIDEBAR DIVIDER */}
-      <div
-        onMouseDown={startDrag('sidebar', sidebarWidth)}
-        style={{
-          width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
-          cursor: "col-resize", flexShrink: 0, position: "relative"
-        }}
-      >
-        <div style={{
-          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-          width: "2px", height: "30px", background: "#666", borderRadius: "2px"
-        }} />
-      </div>
+      {!sidebarCollapsed && (
+        <div
+          onMouseDown={startDrag('sidebar', sidebarWidth)}
+          style={{
+            width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+            cursor: "col-resize", flexShrink: 0, position: "relative"
+          }}
+        >
+          <div style={{
+            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            width: "2px", height: "30px", background: "#666", borderRadius: "2px"
+          }} />
+        </div>
+      )}
 
       {/* 3. CENTER STAGE */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1e1e1e" }}>
@@ -3310,6 +3377,57 @@ const NewApp = () => {
 
         {/* CANVAS */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden", display: "flex" }}>
+          {/* Floating Graph Search Bar */}
+          <div style={{
+            position: "absolute", top: 12, right: 12, zIndex: 200,
+            display: "flex", alignItems: "center", gap: "6px",
+            background: "rgba(30,30,30,0.92)", backdropFilter: "blur(8px)",
+            border: `1px solid ${graphSearchQuery ? '#7c4dff' : '#444'}`,
+            borderRadius: "8px", padding: "4px 10px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            transition: "border-color 0.2s, width 0.3s",
+            width: graphSearchQuery ? "260px" : "180px",
+          }}>
+            <Search size={13} color={graphSearchQuery ? '#7c4dff' : '#666'} />
+            <input
+              type="text"
+              placeholder="Search nodes…"
+              value={graphSearchQuery}
+              onChange={(e) => setGraphSearchQuery(e.target.value)}
+              style={{
+                background: "transparent", border: "none", outline: "none",
+                color: "#ddd", fontSize: "0.75rem", width: "100%",
+                fontFamily: "inherit",
+              }}
+            />
+            {graphSearchQuery && (
+              <button
+                onClick={() => setGraphSearchQuery('')}
+                style={{
+                  background: "transparent", border: "none", cursor: "pointer",
+                  color: "#888", fontSize: "0.8rem", padding: 0, lineHeight: 1,
+                }}
+              >✕</button>
+            )}
+          </div>
+          {/* Heatmap Toggle */}
+          <button
+            onClick={() => setHeatmapMode(h => !h)}
+            title={heatmapMode ? "Switch to Language Colors" : "Switch to Complexity Heatmap"}
+            style={{
+              position: "absolute", top: 12, right: graphSearchQuery ? 285 : 205, zIndex: 200,
+              background: heatmapMode ? "rgba(124,77,255,0.25)" : "rgba(30,30,30,0.92)",
+              backdropFilter: "blur(8px)",
+              border: `1px solid ${heatmapMode ? '#7c4dff' : '#444'}`,
+              borderRadius: "8px", padding: "5px 10px",
+              cursor: "pointer", display: "flex", alignItems: "center", gap: "5px",
+              color: heatmapMode ? "#bb86fc" : "#888", fontSize: "0.7rem",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+              transition: "all 0.2s",
+            }}
+          >
+            🔥 {heatmapMode ? "Heatmap" : "Heatmap"}
+          </button>
           {/* FILE DEPENDENCY MAP - Explorer only */}
           {viewMode === "fileMap" && sidebarView === "explorer" && (
             <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
@@ -3321,6 +3439,7 @@ const NewApp = () => {
                 graphMemory={graphMemory}
                 setGraphMemory={setGraphMemory}
                 crossFileData={crossFileData}
+                searchQuery={graphSearchQuery}
                 onNodeDoubleClick={(_, node) => {
                   setSidebarView("explorer");
                   handleFileSelect(node.id, null);
@@ -3341,6 +3460,7 @@ const NewApp = () => {
                 onFileSelect={(path) => { setGithubSelectedFile(path); }}
                 graphMemory={graphMemory}
                 setGraphMemory={setGraphMemory}
+                searchQuery={graphSearchQuery}
               />
             </div>
           )}
@@ -3391,6 +3511,8 @@ const NewApp = () => {
                     graphMemory={graphMemory}
                     setGraphMemory={setGraphMemory}
                     memoryKey="blueprint:depGraph"
+                    searchQuery={graphSearchQuery}
+                    heatmapMode={heatmapMode}
                   />
                 </>
               ) : sidebarView === "blueprint" && blueprintFlowchartFile && analysisResult?.func_dep_graph && !currentFunc ? (
@@ -3413,6 +3535,8 @@ const NewApp = () => {
                     graphMemory={graphMemory}
                     setGraphMemory={setGraphMemory}
                     memoryKey={`${blueprintFlowchartFile}:funcDep`}
+                    searchQuery={graphSearchQuery}
+                    heatmapMode={heatmapMode}
                   />
                 </>
               ) : sidebarView === "blueprint" && blueprintFlowchartFile && analysisResult?.graph_data ? (
@@ -3491,6 +3615,8 @@ const NewApp = () => {
                     graphMemory={graphMemory}
                     setGraphMemory={setGraphMemory}
                     memoryKey="github:depGraph"
+                    searchQuery={graphSearchQuery}
+                    heatmapMode={heatmapMode}
                   />
                 </>
               ) : sidebarView === "github" && githubFlowchartFile && analysisResult?.func_dep_graph && !currentFunc ? (
@@ -3513,6 +3639,8 @@ const NewApp = () => {
                     graphMemory={graphMemory}
                     setGraphMemory={setGraphMemory}
                     memoryKey={`${githubFlowchartFile}:funcDep`}
+                    searchQuery={graphSearchQuery}
+                    heatmapMode={heatmapMode}
                   />
                 </>
               ) : sidebarView === "github" && githubFlowchartFile && analysisResult?.graph_data ? (
@@ -3552,6 +3680,8 @@ const NewApp = () => {
                   graphMemory={graphMemory}
                   setGraphMemory={setGraphMemory}
                   memoryKey={`${sidebarView === 'explorer' ? selectedFilePath : 'snippet'}:funcDep`}
+                  searchQuery={graphSearchQuery}
+                  heatmapMode={heatmapMode}
                 />
               ) : analysisResult && analysisResult.graph_data ? (
                 <FlowGraph
