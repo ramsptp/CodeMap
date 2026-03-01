@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
-import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent } from './utils/githubApi';
+import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent, checkRateLimit } from './utils/githubApi';
 
 // ===========================================
 // DEPENDENCY SCANNER
@@ -932,7 +932,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             onClick={handleReset}
             title="Reset node positions"
             style={{
-              position: 'absolute', top: 15, right: 15, zIndex: 100, // Fixed z-index to stay above ReactFlow
+              position: 'absolute', bottom: 15, left: 55, zIndex: 100, // Bottom-left near zoom controls
               background: '#333', border: '1px solid #555', borderRadius: '6px',
               color: '#aaa', padding: '6px 12px', cursor: 'pointer',
               fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
@@ -1186,7 +1186,7 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         onClick={handleReset}
         title="Reset node positions"
         style={{
-          position: 'absolute', top: 15, left: 15, zIndex: 100, // High z-index to overlay controls
+          position: 'absolute', bottom: 15, left: 55, zIndex: 100, // Bottom-left near zoom controls
           background: '#333', border: '1px solid #555', borderRadius: '6px',
           color: '#aaa', padding: '6px 12px', cursor: 'pointer',
           fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
@@ -1801,6 +1801,8 @@ const NewApp = () => {
   const [githubLoadingRepo, setGithubLoadingRepo] = useState(false);
   const [githubLoadingFile, setGithubLoadingFile] = useState(null);
   const [githubError, setGithubError] = useState(null);
+  const [githubToken, setGithubToken] = useState(() => localStorage.getItem('codemap_github_token') || '');
+  const [githubRateInfo, setGithubRateInfo] = useState(null); // { remaining, limit, reset }
 
   // GitHub Blueprint state (mirrors Blueprint pattern)
   const [githubBlueprintData, setGithubBlueprintData] = useState(null); // { dep_graph, file_info, project_stats }
@@ -1823,10 +1825,13 @@ const NewApp = () => {
     setGithubBlueprintData(null);
     setGithubFlowchartFile(null);
     try {
-      const branch = await fetchDefaultBranch(parsed.owner, parsed.repo);
-      const tree = await fetchRepoTree(parsed.owner, parsed.repo, branch);
+      const token = githubToken || null;
+      const branch = await fetchDefaultBranch(parsed.owner, parsed.repo, token);
+      const tree = await fetchRepoTree(parsed.owner, parsed.repo, branch, token);
       setGithubRepoInfo({ ...parsed, branch });
       setGithubTree(tree);
+      // Check rate limit
+      try { const rl = await checkRateLimit(token); setGithubRateInfo(rl); } catch (e) { /* ignore */ }
 
       // Compute quick stats from the tree for the popup
       const codeExts = ['py', 'java', 'js', 'jsx', 'ts', 'tsx', 'cpp', 'cc', 'c', 'h', 'hpp', 'cs', 'go', 'rs', 'rb'];
@@ -1868,7 +1873,7 @@ const NewApp = () => {
     setAnalysisResult(null);
     setCurrentFunc(null);
     try {
-      const content = await fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, node._ghPath);
+      const content = await fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, node._ghPath, githubToken || null);
       setGithubFileContent(content);
       setGithubLoadingFile(null);
 
@@ -1927,7 +1932,7 @@ const NewApp = () => {
         for (let i = 0; i < filesToFetch.length; i += batchSize) {
           const batch = filesToFetch.slice(i, i + batchSize);
           const results = await Promise.all(
-            batch.map(f => fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, f.ghPath).catch(() => ''))
+            batch.map(f => fetchFileContent(githubRepoInfo.owner, githubRepoInfo.repo, f.ghPath, githubToken || null).catch(() => ''))
           );
           batch.forEach((f, idx) => { f.content = results[idx]; });
         }
@@ -1939,6 +1944,24 @@ const NewApp = () => {
         const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
         if (!res.data.error) {
           setGithubBlueprintData(res.data);
+          // Inject fetched content back into the tree so double-click can find it
+          setGithubTree(prev => {
+            if (!prev) return prev;
+            const updated = JSON.parse(JSON.stringify(prev));
+            for (const file of codeFiles) {
+              if (!file.content) continue;
+              const parts = file.path.split('/').filter(Boolean);
+              let current = updated;
+              for (const part of parts) {
+                if (current?.children?.[part]) current = current.children[part];
+                else { current = null; break; }
+              }
+              if (current && current.type === 'file') {
+                current.content = file.content;
+              }
+            }
+            return updated;
+          });
         } else {
           alert('Analysis error: ' + res.data.error);
         }
@@ -2782,6 +2805,28 @@ const NewApp = () => {
               )}
             </div>
 
+            {/* Rate limit indicator (token is now in API Settings modal) */}
+            {githubRateInfo && (
+              <div
+                onClick={() => setShowApiKeyModal(true)}
+                style={{
+                  padding: "6px 12px", borderBottom: "1px solid #333", cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: "6px", fontSize: "0.65rem",
+                }}
+                title="Open API Settings to manage your GitHub token"
+              >
+                <Settings size={10} color="#888" />
+                <span style={{ color: "#888" }}>API</span>
+                <span style={{
+                  marginLeft: "auto", padding: "2px 6px", borderRadius: "8px",
+                  background: githubRateInfo.remaining < 10 ? "#f4433620" : "#23863620",
+                  color: githubRateInfo.remaining < 10 ? "#f44336" : "#4caf50",
+                }}>
+                  {githubRateInfo.remaining}/{githubRateInfo.limit} left
+                </span>
+              </div>
+            )}
+
             {/* Analysis Loading */}
             {githubBlueprintLoading && (
               <div style={{ padding: "20px 12px", textAlign: "center", borderBottom: "1px solid #333" }}>
@@ -3133,7 +3178,7 @@ const NewApp = () => {
               )}
             </div>
 
-            <button style={runBtnStyle} onClick={() => handleAnalyze(null)}>
+            <button style={runBtnStyle} onClick={() => { if (sidebarView === 'github' && githubBlueprintData && githubSelectedFile) { setGithubFlowchartFile(githubSelectedFile); } handleAnalyze(null); }}>
               <Play size={14} fill="white" />
               {sidebarView === "snippets" ? " Analyze Snippet" : " Analyze File"}
             </button>
@@ -3150,7 +3195,7 @@ const NewApp = () => {
             <button
               style={{ ...iconBtnStyle, color: apiKeyStatus === 'ok' ? '#4caf50' : '#ccc' }}
               onClick={() => { setApiKeyInput(geminiApiKey); setShowApiKeyModal(true); }}
-              title="AI Settings (Gemini API Key)"
+              title="API Settings"
             >
               <Settings size={14} />
             </button>
@@ -3704,50 +3749,106 @@ const NewApp = () => {
         )}
       </div>
 
-      {/* API KEY MODAL */}
+      {/* API SETTINGS MODAL */}
       {showApiKeyModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 9999,
         }} onClick={() => setShowApiKeyModal(false)}>
           <div onClick={e => e.stopPropagation()} style={{
             background: '#252526', border: '1px solid #444', borderRadius: '12px',
-            padding: '24px', width: '420px', maxWidth: '90vw',
+            padding: '24px', width: '460px', maxWidth: '90vw',
             boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
           }}>
-            <h3 style={{ margin: '0 0 4px', color: '#fff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Zap size={18} color="#7c4dff" /> AI Settings
+            <h3 style={{ margin: '0 0 16px', color: '#fff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Settings size={18} color="#7c4dff" /> API Settings
             </h3>
-            <p style={{ color: '#888', fontSize: '0.75rem', margin: '0 0 16px' }}>
-              Enter your Gemini API key. Get one free at{' '}
-              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c4dff' }}>aistudio.google.com</a>
-            </p>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={e => setApiKeyInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSaveApiKey()}
-              placeholder="AIza..."
-              style={{
-                width: '100%', padding: '10px 12px', background: '#1e1e1e', border: '1px solid #444',
-                borderRadius: '6px', color: '#d4d4d4', fontSize: '0.85rem', fontFamily: 'monospace',
-                outline: 'none', boxSizing: 'border-box',
-              }}
-            />
-            {apiKeyStatus === 'error' && (
-              <p style={{ color: '#f44336', fontSize: '0.7rem', margin: '8px 0 0' }}>⚠️ Invalid API key. Please check and try again.</p>
-            )}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
+
+            {/* Gemini AI Key Section */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <Zap size={14} color="#7c4dff" />
+                <span style={{ fontSize: '0.8rem', color: '#ccc', fontWeight: 600 }}>Gemini AI Key</span>
+              </div>
+              <p style={{ color: '#888', fontSize: '0.7rem', margin: '0 0 8px' }}>
+                For AI-powered explanations. Get one free at{' '}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c4dff' }}>aistudio.google.com</a>
+              </p>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={e => setApiKeyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveApiKey()}
+                placeholder="AIza..."
+                style={{
+                  width: '100%', padding: '8px 12px', background: '#1e1e1e', border: '1px solid #444',
+                  borderRadius: '6px', color: '#d4d4d4', fontSize: '0.8rem', fontFamily: 'monospace',
+                  outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+              {apiKeyStatus === 'error' && (
+                <p style={{ color: '#f44336', fontSize: '0.7rem', margin: '6px 0 0' }}>⚠️ Invalid API key.</p>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: '1px', background: '#444', margin: '0 0 20px' }} />
+
+            {/* GitHub Token Section */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <Github size={14} color="#fff" />
+                <span style={{ fontSize: '0.8rem', color: '#ccc', fontWeight: 600 }}>GitHub Token</span>
+                {githubRateInfo && (
+                  <span style={{
+                    marginLeft: 'auto', fontSize: '0.65rem', padding: '2px 8px',
+                    borderRadius: '10px',
+                    background: githubRateInfo.remaining < 10 ? '#f4433620' : '#23863620',
+                    color: githubRateInfo.remaining < 10 ? '#f44336' : '#4caf50',
+                  }}>
+                    {githubRateInfo.remaining}/{githubRateInfo.limit} req left
+                  </span>
+                )}
+              </div>
+              <p style={{ color: '#888', fontSize: '0.7rem', margin: '0 0 8px' }}>
+                Optional. Without a token: 60 req/hr. With a token: 5,000 req/hr.{' '}
+                <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" style={{ color: '#238636' }}>Generate token</a>
+              </p>
+              <input
+                type="password"
+                value={githubToken}
+                onChange={(e) => {
+                  setGithubToken(e.target.value);
+                  localStorage.setItem('codemap_github_token', e.target.value);
+                }}
+                placeholder="ghp_... (no special scopes needed for public repos)"
+                style={{
+                  width: '100%', padding: '8px 12px', background: '#1e1e1e', border: '1px solid #444',
+                  borderRadius: '6px', color: '#d4d4d4', fontSize: '0.8rem', fontFamily: 'monospace',
+                  outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+              {githubRateInfo && githubRateInfo.remaining < 5 && (
+                <p style={{ color: '#f44336', fontSize: '0.65rem', margin: '6px 0 0' }}>
+                  ⚠️ Rate limit almost exhausted. {githubToken ? 'Token may be invalid.' : 'Add a token above.'}
+                  {githubRateInfo.reset && ` Resets at ${githubRateInfo.reset.toLocaleTimeString()}.`}
+                </p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowApiKeyModal(false)} style={{
                 padding: '8px 16px', background: 'transparent', border: '1px solid #555',
                 borderRadius: '6px', color: '#888', cursor: 'pointer', fontSize: '0.8rem',
-              }}>Cancel</button>
+              }}>Close</button>
               <button onClick={handleSaveApiKey} style={{
                 padding: '8px 20px', background: 'linear-gradient(135deg, #7c4dff, #448aff)',
                 border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer',
                 fontSize: '0.8rem', fontWeight: 600,
-              }}>Save Key</button>
+              }}>Save</button>
             </div>
           </div>
         </div>
