@@ -1217,7 +1217,7 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
             boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
           }}
           maskColor="rgba(0, 0, 0, 0.4)"
-          position="top-right"
+          position="bottom-right"
         />
       </ReactFlow>
       <button
@@ -3648,14 +3648,14 @@ const NewApp = () => {
                 <>
                   <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
                     <button
-                      onClick={() => { setGithubFlowchartFile(null); setAnalysisResult(null); }}
+                      onClick={() => { setCurrentFunc(null); setAiExplanation(null); }}
                       style={{
                         padding: '6px 12px', background: '#333', color: '#fff',
                         border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
                         fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
                       }}
                     >
-                      ← Back to Repo Map
+                      ← Back to Dependencies
                     </button>
                   </div>
                   <FlowGraph
