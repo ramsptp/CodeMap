@@ -1203,11 +1203,15 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         <Controls />
         <MiniMap
           nodeColor={(n) => {
-            if (n.type === 'process') return '#4caf50';
-            if (n.type === 'decision') return '#ff9800';
-            if (n.type === 'loop') return '#2196f3';
-            if (n.type === 'externalCall') return '#9c27b0';
-            return '#888';
+            if (n.type === 'process') return '#888888'; // Grey for standard statements
+            if (n.type === 'decision') return '#ffb74d'; // Orange-ish for decision
+            if (n.type === 'loop') return '#2196f3'; // Blue for loop
+            if (n.type === 'externalCall') return '#7c4dff'; // Purple for external
+            if (n.type === 'terminator') {
+              const labelLower = (n.data?.label || '').toLowerCase();
+              return labelLower.startsWith('start') ? '#4caf50' : '#ff5252'; // Green for start, Red for return
+            }
+            return '#555555'; // Fallback
           }}
           nodeStrokeWidth={3}
           style={{
