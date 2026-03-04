@@ -1711,7 +1711,11 @@ const NewApp = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState("split");
-  const [currentFunc, setCurrentFunc] = useState(null);
+  const [currentFuncsMap, setCurrentFuncsMap] = useState({});
+  const currentFunc = currentFuncsMap[sidebarView] || null;
+  const setCurrentFunc = useCallback((val) => {
+    setCurrentFuncsMap(prev => ({ ...prev, [sidebarView]: typeof val === 'function' ? val(prev[sidebarView]) : val }));
+  }, [sidebarView]);
 
   // Panel widths (resizable)
   const [sidebarWidth, setSidebarWidth] = useState(250);
@@ -1792,7 +1796,11 @@ const NewApp = () => {
   }, [activeSnippetId]);
 
   // Backend State
-  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analysisResultsMap, setAnalysisResultsMap] = useState({});
+  const analysisResult = analysisResultsMap[sidebarView] || null;
+  const setAnalysisResult = useCallback((val) => {
+    setAnalysisResultsMap(prev => ({ ...prev, [sidebarView]: typeof val === 'function' ? val(prev[sidebarView]) : val }));
+  }, [sidebarView]);
   const [loading, setLoading] = useState(false);
   const [analysisCache, setAnalysisCache] = useState({}); // filePath -> { result, func }
 
@@ -2109,7 +2117,11 @@ const NewApp = () => {
 
   // AI Explanation state
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('codemap_gemini_key') || '');
-  const [aiExplanation, setAiExplanation] = useState(null);
+  const [aiExplanationsMap, setAiExplanationsMap] = useState({});
+  const aiExplanation = aiExplanationsMap[sidebarView] || null;
+  const setAiExplanation = useCallback((val) => {
+    setAiExplanationsMap(prev => ({ ...prev, [sidebarView]: typeof val === 'function' ? val(prev[sidebarView]) : val }));
+  }, [sidebarView]);
   const [aiLoading, setAiLoading] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
