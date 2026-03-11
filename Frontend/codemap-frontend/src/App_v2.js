@@ -1733,6 +1733,8 @@ const NewApp = () => {
   const [expandedCategories, setExpandedCategories] = useState({});
   const [aiTemplateQuery, setAiTemplateQuery] = useState('');
   const [aiTemplateLoading, setAiTemplateLoading] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(null); // { name, code, language }
+  const [templateCode, setTemplateCode] = useState('');
 
   // Drag handler
   useEffect(() => {
@@ -2632,6 +2634,11 @@ const NewApp = () => {
       else if (fn.endsWith('.cpp') || fn.endsWith('.cc')) langToSend = 'cpp';
       else if (fn.endsWith('.c')) langToSend = 'c';
 
+    } else if (sidebarView === "templates") {
+      if (!templateCode) return;
+      codeToSend = templateCode;
+      langToSend = templateLang === 'cpp' ? 'c' : templateLang;
+
     } else {
       // Use active snippet's language and content
       if (!activeSnippet) return;
@@ -3328,14 +3335,14 @@ const NewApp = () => {
                       {isExpanded && filtered.map(t => (
                         <div key={t.id} onClick={() => {
                           const code = t.code[templateLang] || t.code.python;
-                          const newSnippet = { id: `template-${t.id}-${Date.now()}`, name: t.name, language: templateLang === 'cpp' ? 'c' : templateLang, content: code };
-                          setSnippets(prev => [...prev, newSnippet]);
-                          setActiveSnippetId(newSnippet.id);
-                          setSidebarView("snippets");
+                          setSelectedTemplate({ name: t.name, id: t.id });
+                          setTemplateCode(code);
+                          setCurrentFunc(null);
+                          setAnalysisResult(null);
                         }}
-                          style={{ padding: "8px 12px 8px 28px", cursor: "pointer", borderBottom: "1px solid #2a2a2a", transition: "background 0.15s" }}
-                          onMouseEnter={e => e.currentTarget.style.background = "#2a2d2e"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <div style={{ fontSize: "0.73rem", color: "#e0e0e0", fontWeight: 500 }}>{t.name}</div>
+                          style={{ padding: "8px 12px 8px 28px", cursor: "pointer", borderBottom: "1px solid #2a2a2a", transition: "background 0.15s", background: selectedTemplate?.id === t.id ? "#2a2d2e" : "transparent", borderLeft: selectedTemplate?.id === t.id ? "2px solid #ff9800" : "2px solid transparent" }}
+                          onMouseEnter={e => { if (selectedTemplate?.id !== t.id) e.currentTarget.style.background = "#2a2d2e"; }} onMouseLeave={e => { if (selectedTemplate?.id !== t.id) e.currentTarget.style.background = "transparent"; }}>
+                          <div style={{ fontSize: "0.73rem", color: selectedTemplate?.id === t.id ? "#ffb74d" : "#e0e0e0", fontWeight: 500 }}>{t.name}</div>
                           <div style={{ fontSize: "0.62rem", color: "#777", marginTop: "2px" }}>{t.description}</div>
                         </div>
                       ))}
@@ -3413,6 +3420,8 @@ const NewApp = () => {
               <span style={{ fontWeight: "bold", color: "#b388ff" }}>
                 {blueprintData ? (blueprintTree?.name || 'Project Blueprint') : 'Project Blueprint'}
               </span>
+            ) : sidebarView === "templates" ? (
+              <span style={{ fontWeight: "bold", color: "#ffb74d" }}>{selectedTemplate ? `📚 ${selectedTemplate.name}` : '📚 Templates'}</span>
             ) : (
               <span style={{ fontWeight: "bold", color: "#f89820" }}>Snippet: {activeSnippet ? activeSnippet.name : 'None'}</span>
             )}
@@ -3472,7 +3481,7 @@ const NewApp = () => {
 
             <button style={runBtnStyle} onClick={() => { if (sidebarView === 'github' && githubBlueprintData && githubSelectedFile) { setGithubFlowchartFile(githubSelectedFile); } handleAnalyze(null); }}>
               <Play size={14} fill="white" />
-              {sidebarView === "snippets" ? " Analyze Snippet" : " Analyze File"}
+              {sidebarView === "snippets" ? " Analyze Snippet" : sidebarView === "templates" ? " Analyze Template" : " Analyze File"}
             </button>
             {/* EXPORT BUTTONS */}
             <button style={{ ...iconBtnStyle, marginLeft: "auto" }} onClick={handleExportGraph} title="Export Graph JSON">
@@ -3587,10 +3596,10 @@ const NewApp = () => {
           {(viewMode === "code" || viewMode === "split") && (
             <div style={{ flex: viewMode === "split" ? `0 0 ${codePaneWidth}%` : "1", borderRight: "none", height: "100%" }}>
               <textarea
-                value={sidebarView === "explorer" ? currentFileContent : sidebarView === "github" ? githubFileContent : (activeSnippet ? activeSnippet.content : '')}
-                onChange={sidebarView === "github" ? undefined : handleCodeChange}
-                readOnly={sidebarView === "github"}
-                style={{ ...editorStyle, ...(sidebarView === "github" ? { opacity: 0.85 } : {}) }} spellCheck="false"
+                value={sidebarView === "explorer" ? currentFileContent : sidebarView === "github" ? githubFileContent : sidebarView === "templates" ? templateCode : (activeSnippet ? activeSnippet.content : '')}
+                onChange={sidebarView === "github" || sidebarView === "templates" ? undefined : handleCodeChange}
+                readOnly={sidebarView === "github" || sidebarView === "templates"}
+                style={{ ...editorStyle, ...(sidebarView === "github" || sidebarView === "templates" ? { opacity: 0.85 } : {}) }} spellCheck="false"
               />
             </div>
           )}
