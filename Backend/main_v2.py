@@ -1511,6 +1511,39 @@ def detect_language(path: str) -> Optional[str]:
             return lang
     return None
 
+class TemplateRequest(BaseModel):
+    query: str
+    language: str = "python"
+
+@app.post("/generate-template")
+async def generate_template(request: TemplateRequest):
+    global _gemini_api_key, _gemini_model
+    
+    if not _gemini_api_key or not _gemini_model:
+        return {"error": "No API key configured. Please set your Gemini API key first."}
+    
+    try:
+        lang = request.language.lower()
+        prompt = (
+            f"Write a clean, well-commented {lang} implementation for: {request.query}\n"
+            f"Include a brief example/test in the main section.\n"
+            f"Return ONLY the code, no markdown fences, no explanation text."
+        )
+        response = _gemini_model.generate_content(prompt)
+        code = response.text.strip()
+        # Strip markdown fences if present
+        if code.startswith("```"):
+            lines = code.split("\n")
+            lines = lines[1:]  # Remove opening fence
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            code = "\n".join(lines)
+        
+        return {"code": code, "name": request.query, "language": lang}
+    except Exception as e:
+        logger.error(f"Template generation failed: {e}")
+        return {"error": str(e)}
+
 
 @app.post("/analyze-project")
 async def analyze_project(request: ProjectRequest):

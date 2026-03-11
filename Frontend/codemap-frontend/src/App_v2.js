@@ -18,8 +18,9 @@ import {
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
   Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
-  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard
+  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard, BookOpen
 } from "lucide-react";
+import templates, { TEMPLATE_CATEGORIES } from './templates';
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
 import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent, checkRateLimit, fetchReadme, fetchFileCommits } from './utils/githubApi';
@@ -1726,6 +1727,13 @@ const NewApp = () => {
   const pendingCrossFileAnalysis = useRef(null); // { filePath, funcName }
   const dragRef = useRef(null); // { type, startX, startValue }
 
+  // Templates state
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateLang, setTemplateLang] = useState('python');
+  const [expandedCategories, setExpandedCategories] = useState({});
+  const [aiTemplateQuery, setAiTemplateQuery] = useState('');
+  const [aiTemplateLoading, setAiTemplateLoading] = useState(false);
+
   // Drag handler
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -2774,6 +2782,14 @@ const NewApp = () => {
         </div>
 
         <div
+          onClick={() => { setSidebarView("templates"); setSidebarCollapsed(false); }}
+          style={{ cursor: "pointer", borderLeft: sidebarView === "templates" ? "2px solid #ff9800" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
+          title="Code Templates"
+        >
+          <BookOpen size={24} color={sidebarView === "templates" ? "#ffb74d" : "#777"} />
+        </div>
+
+        <div
           onClick={() => setSidebarCollapsed(c => !c)}
           style={{ cursor: "pointer", marginTop: "auto", width: "100%", display: "flex", justifyContent: "center", padding: "8px 0", transition: "transform 0.2s" }}
           title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
@@ -3273,6 +3289,92 @@ const NewApp = () => {
                 </div>
               )}
             </>
+          )}
+
+          {/* VIEW E: CODE TEMPLATES */}
+          {sidebarView === "templates" && (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", color: "#ffb74d" }}>
+                <BookOpen size={16} /> Code Templates
+              </div>
+              <div style={{ padding: "8px 12px", borderBottom: "1px solid #333" }}>
+                <input type="text" placeholder="Search templates..." value={templateSearch} onChange={(e) => setTemplateSearch(e.target.value)}
+                  style={{ width: "100%", padding: "6px 10px", background: "#1e1e1e", border: "1px solid #444", borderRadius: "4px", color: "#fff", fontSize: "0.75rem", outline: "none" }} />
+              </div>
+              <div style={{ padding: "6px 12px", borderBottom: "1px solid #333", display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                {["python", "java", "cpp", "javascript"].map(lang => (
+                  <button key={lang} onClick={() => setTemplateLang(lang)} style={{
+                    padding: "3px 8px", fontSize: "0.65rem", borderRadius: "10px", cursor: "pointer",
+                    background: templateLang === lang ? "#ff980030" : "#333",
+                    border: `1px solid ${templateLang === lang ? "#ff9800" : "#555"}`,
+                    color: templateLang === lang ? "#ffb74d" : "#999", fontWeight: templateLang === lang ? 700 : 400,
+                  }}>
+                    {lang === "cpp" ? "C++" : lang === "javascript" ? "JS" : lang.charAt(0).toUpperCase() + lang.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
+                {TEMPLATE_CATEGORIES.map(cat => {
+                  const filtered = templates.filter(t => t.category === cat && (templateSearch === '' || t.name.toLowerCase().includes(templateSearch.toLowerCase()) || t.description.toLowerCase().includes(templateSearch.toLowerCase())));
+                  if (filtered.length === 0) return null;
+                  const isExpanded = expandedCategories[cat] !== false;
+                  return (
+                    <div key={cat}>
+                      <div onClick={() => setExpandedCategories(prev => ({ ...prev, [cat]: !isExpanded }))}
+                        style={{ padding: "6px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "0.72rem", fontWeight: 700, color: "#ccc", background: "#2a2a2a", borderBottom: "1px solid #333" }}>
+                        <ChevronRight size={12} style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.15s" }} />
+                        {cat} <span style={{ color: "#666", fontWeight: 400 }}>({filtered.length})</span>
+                      </div>
+                      {isExpanded && filtered.map(t => (
+                        <div key={t.id} onClick={() => {
+                          const code = t.code[templateLang] || t.code.python;
+                          const newSnippet = { id: `template-${t.id}-${Date.now()}`, name: t.name, language: templateLang === 'cpp' ? 'c' : templateLang, content: code };
+                          setSnippets(prev => [...prev, newSnippet]);
+                          setActiveSnippetId(newSnippet.id);
+                          setSidebarView("snippets");
+                        }}
+                          style={{ padding: "8px 12px 8px 28px", cursor: "pointer", borderBottom: "1px solid #2a2a2a", transition: "background 0.15s" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#2a2d2e"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <div style={{ fontSize: "0.73rem", color: "#e0e0e0", fontWeight: 500 }}>{t.name}</div>
+                          <div style={{ fontSize: "0.62rem", color: "#777", marginTop: "2px" }}>{t.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ borderTop: "1px solid #444", padding: "10px 12px", background: "#1e1e1e" }}>
+                <div style={{ fontSize: "0.68rem", color: "#888", marginBottom: "6px" }}>Can't find what you need?</div>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <input type="text" placeholder="e.g. Dijkstra's algorithm" value={aiTemplateQuery} onChange={(e) => setAiTemplateQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && aiTemplateQuery.trim()) {
+                      setAiTemplateLoading(true);
+                      axios.post("http://127.0.0.1:8000/generate-template", { query: aiTemplateQuery, language: templateLang })
+                        .then(res => { if (res.data.error) { alert(res.data.error); return; }
+                          const ns = { id: `ai-${Date.now()}`, name: `AI: ${aiTemplateQuery}`, language: templateLang === 'cpp' ? 'c' : templateLang, content: res.data.code };
+                          setSnippets(prev => [...prev, ns]); setActiveSnippetId(ns.id); setSidebarView("snippets"); setAiTemplateQuery('');
+                        }).catch(err => alert("Failed: " + err.message)).finally(() => setAiTemplateLoading(false));
+                    }}}
+                    style={{ flex: 1, padding: "6px 8px", background: "#252526", border: "1px solid #444", borderRadius: "4px", color: "#fff", fontSize: "0.7rem", outline: "none" }} />
+                  <button disabled={aiTemplateLoading || !aiTemplateQuery.trim()} onClick={() => {
+                    if (!aiTemplateQuery.trim()) return;
+                    setAiTemplateLoading(true);
+                    axios.post("http://127.0.0.1:8000/generate-template", { query: aiTemplateQuery, language: templateLang })
+                      .then(res => { if (res.data.error) { alert(res.data.error); return; }
+                        const ns = { id: `ai-${Date.now()}`, name: `AI: ${aiTemplateQuery}`, language: templateLang === 'cpp' ? 'c' : templateLang, content: res.data.code };
+                        setSnippets(prev => [...prev, ns]); setActiveSnippetId(ns.id); setSidebarView("snippets"); setAiTemplateQuery('');
+                      }).catch(err => alert("Failed: " + err.message)).finally(() => setAiTemplateLoading(false));
+                  }} style={{
+                    padding: "6px 10px", borderRadius: "4px", cursor: aiTemplateLoading ? "wait" : "pointer",
+                    border: "1px solid #ff980066", background: "#ff980022", color: "#ffb74d",
+                    fontSize: "0.68rem", fontWeight: 600, whiteSpace: "nowrap",
+                    opacity: aiTemplateLoading || !aiTemplateQuery.trim() ? 0.5 : 1,
+                  }}>
+                    {aiTemplateLoading ? "..." : "✨ Generate"}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}
