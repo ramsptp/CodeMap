@@ -1,0 +1,22 @@
+
+> codemap-frontend@0.1.0 build
+> react-scripts build
+
+(node:6096) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Creating an optimized production build...
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+Failed to compile.
+
+[eslint] 
+src\App_v2.js
+  Line 3479:112:  'setSelectedNodeId' is not defined  no-undef
+
+Search for the keywords to learn more about each error.
+
+

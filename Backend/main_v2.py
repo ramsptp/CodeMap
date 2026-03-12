@@ -288,7 +288,13 @@ def extract_java_methods(code: str):
             elif code[i] == "}": brace -= 1
             i += 1
         body = code[start:i-1].strip()
-        methods.append({"name": name, "body": body})
+        full_method = code[m.start():i]
+        methods.append({
+            "name": name, 
+            "body": body,
+            "line_count": full_method.count('\n') + 1,
+            "first_lines": "\n".join(full_method.splitlines()[:3])
+        })
     return methods
 
 def parse_java_structure(code):
@@ -899,7 +905,14 @@ def extract_js_functions(code):
             elif code[i] == "}": brace -= 1
             i += 1
         body = code[start:i-1].strip()
-        funcs.append({"name": m.group(1), "body": body, "type": "standard"})
+        full_func = code[m.start():i]
+        funcs.append({
+            "name": m.group(1), 
+            "body": body, 
+            "type": "standard",
+            "line_count": full_func.count('\n') + 1,
+            "first_lines": "\n".join(full_func.splitlines()[:3])
+        })
 
     # 2. Arrow: const foo = (args): Type => {
     # Regex: (const|let|var) name = (args) (: Type)? => {
@@ -913,7 +926,14 @@ def extract_js_functions(code):
             elif code[i] == "}": brace -= 1
             i += 1
         body = code[start:i-1].strip()
-        funcs.append({"name": m.group(2), "body": body, "type": "arrow"})
+        full_func = code[m.start():i]
+        funcs.append({
+            "name": m.group(2), 
+            "body": body, 
+            "type": "arrow",
+            "line_count": full_func.count('\n') + 1,
+            "first_lines": "\n".join(full_func.splitlines()[:3])
+        })
         
     return funcs
         
@@ -962,7 +982,13 @@ def extract_cpp_methods(code):
             elif code[i] == "}": brace -= 1
             i += 1
         body = code[start:i-1].strip()
-        funcs.append({"name": name, "body": body})
+        full_func = code[m.start():i]
+        funcs.append({
+            "name": name, 
+            "body": body,
+            "line_count": full_func.count('\n') + 1,
+            "first_lines": "\n".join(full_func.splitlines()[:3])
+        })
     return funcs
 
 
@@ -1138,7 +1164,9 @@ async def analyze_code(request: CodeRequest):
     result = {
         "functions": {"names": [], "count": 0}, 
         "graph_data": None, 
-        "complexity": {}
+        "complexity": {},
+        "line_counts": {},
+        "code_snippets": {}
     }
     
     lang = request.language.lower()
@@ -1150,6 +1178,9 @@ async def analyze_code(request: CodeRequest):
             result["functions"]["names"] = [f.name for f in funcs]
             result["functions"]["count"] = len(funcs)
             result["complexity"] = {f.name: calculate_python_complexity(f) for f in funcs}
+            lines = request.code.splitlines()
+            result["line_counts"] = {f.name: (f.end_lineno - f.lineno + 1) for f in funcs if hasattr(f, 'end_lineno')}
+            result["code_snippets"] = {f.name: "\n".join(lines[f.lineno-1:min(f.lineno+2, getattr(f, 'end_lineno', f.lineno+2))]) for f in funcs}
             
             if request.function_name:
                 target = next((f for f in funcs if f.name == request.function_name), None)
@@ -1168,6 +1199,8 @@ async def analyze_code(request: CodeRequest):
             result["functions"]["names"] = [m["name"] for m in methods]
             result["functions"]["count"] = len(methods)
             result["complexity"] = {m["name"]: calculate_java_complexity(m["body"]) for m in methods}
+            result["line_counts"] = {m["name"]: m.get("line_count", 0) for m in methods}
+            result["code_snippets"] = {m["name"]: m.get("first_lines", "") for m in methods}
             
             if request.function_name:
                 target = next((m for m in methods if m["name"] == request.function_name), None)
@@ -1182,6 +1215,8 @@ async def analyze_code(request: CodeRequest):
             result["functions"]["names"] = [f["name"] for f in funcs]
             result["functions"]["count"] = len(funcs)
             result["complexity"] = {f["name"]: calculate_js_complexity(f["body"]) for f in funcs}
+            result["line_counts"] = {f["name"]: f.get("line_count", 0) for f in funcs}
+            result["code_snippets"] = {f["name"]: f.get("first_lines", "") for f in funcs}
             
             if request.function_name:
                 target = next((f for f in funcs if f["name"] == request.function_name), None)
@@ -1199,6 +1234,8 @@ async def analyze_code(request: CodeRequest):
             result["functions"]["names"] = [f["name"] for f in funcs]
             result["functions"]["count"] = len(funcs)
             result["complexity"] = {f["name"]: calculate_cpp_complexity(f["body"]) for f in funcs}
+            result["line_counts"] = {f["name"]: f.get("line_count", 0) for f in funcs}
+            result["code_snippets"] = {f["name"]: f.get("first_lines", "") for f in funcs}
             
             if request.function_name:
                 target = next((f for f in funcs if f["name"] == request.function_name), None)
@@ -1259,7 +1296,9 @@ async def analyze_code(request: CodeRequest):
                     "data": {
                         "label": fname + "()",
                         "complexity": cx,
-                        "language": lang
+                        "language": lang,
+                        "lineCount": result.get("line_counts", {}).get(fname, 0),
+                        "snippet": result.get("code_snippets", {}).get(fname, "")
                     },
                     "type": "funcDep",
                 })

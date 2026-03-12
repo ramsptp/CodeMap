@@ -789,6 +789,7 @@ const FuncDepNode = ({ data }) => {
 const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, onNodeDoubleClick, searchQuery = '', heatmapMode = false }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [tooltip, setTooltip] = useState(null);
 
   const funcDepNodeTypes = useMemo(() => ({ funcDep: FuncDepNode }), []);
 
@@ -949,6 +950,14 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
     }
   }, [onFuncClick, setGraphMemory, memoryKey, nodes, edges]);
 
+  const handleNodeMouseEnter = useCallback((event, node) => {
+    setTooltip({ x: event.clientX, y: event.clientY, data: node.data });
+  }, []);
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setTooltip(null);
+  }, []);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       {nodes.length > 0 ? (
@@ -960,6 +969,8 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             onEdgesChange={onEdgesChange}
             onNodeClick={handleNodeClick}
             onNodeDoubleClick={(e, node) => onNodeDoubleClick?.(e, node)}
+            onNodeMouseEnter={handleNodeMouseEnter}
+            onNodeMouseLeave={handleNodeMouseLeave}
             nodeTypes={funcDepNodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3 }}
@@ -980,6 +991,28 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
           >
             ↻ Reset Layout
           </button>
+
+          {tooltip && (
+            <div style={{
+              position: 'fixed', left: tooltip.x + 15, top: tooltip.y + 15, zIndex: 9999,
+              background: 'rgba(20,20,20,0.95)', border: '1px solid #444', borderRadius: '6px',
+              padding: '10px 14px', color: '#fff', pointerEvents: 'none',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)', maxWidth: '300px', fontSize: '0.75rem'
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '0.85rem', color: '#b388ff' }}>{tooltip.data.label || 'Node'}</div>
+              {tooltip.data.lineCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Line Count: <span style={{color: '#fff'}}>{tooltip.data.lineCount}</span></div>}
+              {tooltip.data.complexity !== undefined && <div style={{ color: '#aaa', marginBottom: '6px' }}>Complexity: <span style={{color: '#ff9800', fontWeight:'bold'}}>{tooltip.data.complexity}</span></div>}
+              
+              {tooltip.data.snippet && (
+                <div style={{ marginTop: '8px', borderTop: '1px solid #333', paddingTop: '6px' }}>
+                  <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Preview</div>
+                  <pre style={{ margin: 0, padding: '4px 6px', background: '#111', borderRadius: '4px', color: '#4caf50', overflowX: 'hidden', textOverflow: 'ellipsis' }}>
+                    {tooltip.data.snippet}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </>
       ) : (
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#555', textAlign: 'center' }}>
@@ -1034,6 +1067,15 @@ const nodeTypes = {
 const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, memoryKey, crossFileData, currentFilePath }, ref) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [tooltip, setTooltip] = useState(null);
+
+  const handleNodeMouseEnter = useCallback((event, node) => {
+    setTooltip({ x: event.clientX, y: event.clientY, data: node.data });
+  }, []);
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setTooltip(null);
+  }, []);
 
   // Expose export functionality to parent
   useImperativeHandle(ref, () => ({
@@ -1196,6 +1238,8 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
@@ -1392,6 +1436,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [hoveredNode, setHoveredNode] = useState(null);
+  const [tooltip, setTooltip] = useState(null);
 
   // Generate a key for current graph structure
   const graphKey = useMemo(() => {
@@ -1656,12 +1701,14 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
   const handleNodeMouseEnter = useCallback((event, node) => {
     setHoveredNode(node.id);
     updateGraphStyles(node.id, nodes, edges);
+    setTooltip({ x: event.clientX, y: event.clientY, data: node.data });
   }, [nodes, edges, updateGraphStyles]);
 
   const handleNodeMouseLeave = useCallback((event, node) => {
     setHoveredNode(null);
     // Revert to selectedFile focus, or clear all if no selectedFile
     updateGraphStyles(selectedFile, nodes, edges);
+    setTooltip(null);
   }, [selectedFile, nodes, edges, updateGraphStyles]);
 
   const hasData = nodes.length > 0;
@@ -1669,24 +1716,41 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
   return (
     <div style={{ width: '100%', height: '100%' }}>
       {hasData ? (
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={handleNodeClick}
-          onPaneClick={onPaneClick}
-          onNodeDragStop={onNodeDragStop}
-          onNodeMouseEnter={handleNodeMouseEnter}
-          onNodeMouseLeave={handleNodeMouseLeave}
-          onNodeDoubleClick={(e, node) => onNodeDoubleClick?.(e, node)}
-          nodeTypes={fileDepGraphNodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-        >
-          <Background color="#1e1e1e" gap={20} size={1} />
-          <Controls />
-        </ReactFlow>
+        <>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
+            onPaneClick={onPaneClick}
+            onNodeDragStop={onNodeDragStop}
+            onNodeMouseEnter={handleNodeMouseEnter}
+            onNodeMouseLeave={handleNodeMouseLeave}
+            onNodeDoubleClick={(e, node) => onNodeDoubleClick?.(e, node)}
+            nodeTypes={fileDepGraphNodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+          >
+            <Background color="#1e1e1e" gap={20} size={1} />
+            <Controls />
+          </ReactFlow>
+
+          {tooltip && (
+          <div style={{
+            position: 'fixed', left: tooltip.x + 15, top: tooltip.y + 15, zIndex: 9999,
+            background: 'rgba(20,20,20,0.95)', border: '1px solid #444', borderRadius: '6px',
+            padding: '10px 14px', color: '#fff', pointerEvents: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)', maxWidth: '300px', fontSize: '0.75rem'
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '0.85rem', color: '#b388ff' }}>{tooltip.data.label || 'Node'}</div>
+            {tooltip.data.language && <div style={{ color: '#aaa', marginBottom: '2px' }}>Language: <span style={{color: '#fff', textTransform:'capitalize'}}>{tooltip.data.language}</span></div>}
+            {tooltip.data.lineCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Lines: <span style={{color: '#fff'}}>{tooltip.data.lineCount}</span></div>}
+            {tooltip.data.functionCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Functions: <span style={{color: '#fff'}}>{tooltip.data.functionCount}</span></div>}
+            {tooltip.data.maxComplexity !== undefined && <div style={{ color: '#aaa' }}>Max Complexity: <span style={{color: '#ff9800', fontWeight:'bold'}}>{tooltip.data.maxComplexity}</span></div>}
+          </div>
+        )}
+        </>
       ) : (
         <div style={{
           position: 'absolute', top: '50%', left: '50%',
@@ -3408,30 +3472,52 @@ const NewApp = () => {
         <div style={{ height: "40px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", padding: "0 15px", justifyContent: "space-between", background: "#1e1e1e" }}>
 
           {/* Breadcrumbs */}
-          <div style={{ fontSize: "0.8rem", color: "#888", display: "flex", alignItems: "center", gap: "10px" }}>
-            <FileCode size={14} color="#4caf50" />
-            {sidebarView === "explorer" ? (
-              <span style={{ fontWeight: "bold", color: "#d4d4d4" }}>{activeFileName}</span>
-            ) : sidebarView === "github" ? (
-              <span style={{ fontWeight: "bold", color: "#c9d1d9" }}>
-                {githubSelectedFile ? githubSelectedFile.split('/').pop() : (githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : 'GitHub')}
-              </span>
-            ) : sidebarView === "blueprint" ? (
-              <span style={{ fontWeight: "bold", color: "#b388ff" }}>
-                {blueprintData ? (blueprintTree?.name || 'Project Blueprint') : 'Project Blueprint'}
-              </span>
-            ) : sidebarView === "templates" ? (
-              <span style={{ fontWeight: "bold", color: "#ffb74d" }}>{selectedTemplate ? `📚 ${selectedTemplate.name}` : '📚 Templates'}</span>
-            ) : (
-              <span style={{ fontWeight: "bold", color: "#f89820" }}>Snippet: {activeSnippet ? activeSnippet.name : 'None'}</span>
-            )}
+          <div style={{ fontSize: "0.8rem", color: "#888", display: "flex", alignItems: "center" }}>
+            {(() => {
+              const crumbs = [];
+              if (sidebarView === "explorer") {
+                crumbs.push({ label: "Local Repo", color: "#888", icon: <Folder size={14} />, onClick: () => { setSelectedFilePath(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                if (activeFileName) crumbs.push({ label: activeFileName, color: "#d4d4d4", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
+              } else if (sidebarView === "github") {
+                crumbs.push({ label: githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : 'GitHub', color: "#888", icon: <Github size={14} />, onClick: () => { setGithubFlowchartFile(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                if (githubSelectedFile) crumbs.push({ label: githubSelectedFile.split('/').pop(), color: "#c9d1d9", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
+              } else if (sidebarView === "blueprint") {
+                crumbs.push({ label: blueprintData ? (blueprintTree?.name || 'Project Blueprint') : 'Project Blueprint', color: "#888", icon: <Layers size={14} />, onClick: () => { setBlueprintFlowchartFile(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                if (blueprintFlowchartFile) crumbs.push({ label: blueprintFlowchartFile, color: "#b388ff", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
+              } else if (sidebarView === "templates") {
+                crumbs.push({ label: "Templates", color: "#888", icon: <BookOpen size={14} />, onClick: () => { setSelectedTemplate(null); setTemplateCode(""); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                if (selectedTemplate) crumbs.push({ label: selectedTemplate.name, color: "#ffb74d", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
+              } else {
+                crumbs.push({ label: "Snippets", color: "#888", icon: <Code size={14} />, onClick: () => { setActiveSnippetId(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                if (activeSnippet) crumbs.push({ label: activeSnippet.name, color: "#f89820", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
+              }
+              if (currentFunc) {
+                crumbs.push({ label: `${currentFunc}()`, color: "#4caf50" });
+              }
 
-            {currentFunc && (
-              <>
-                <span style={{ color: "#555" }}>/</span>
-                <span style={{ color: "#4caf50" }}>{currentFunc}()</span>
-              </>
-            )}
+              return crumbs.map((crumb, idx) => (
+                <React.Fragment key={idx}>
+                  {idx > 0 && <span style={{ margin: "0 8px", color: "#555" }}>/</span>}
+                  <div 
+                    onClick={crumb.onClick}
+                    style={{ 
+                      display: "flex", alignItems: "center", gap: "6px",
+                      color: crumb.color, fontWeight: idx === crumbs.length - 1 ? "bold" : "normal",
+                      cursor: crumb.onClick ? "pointer" : "default",
+                      transition: "all 0.15s ease",
+                      padding: crumb.onClick ? "3px 6px" : "0",
+                      borderRadius: "4px",
+                      background: "transparent"
+                    }}
+                    onMouseEnter={(e) => { if(crumb.onClick) { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "#ffffff11"; } }}
+                    onMouseLeave={(e) => { if(crumb.onClick) { e.currentTarget.style.color = crumb.color; e.currentTarget.style.background = "transparent"; } }}
+                  >
+                    {crumb.icon}
+                    {crumb.label}
+                  </div>
+                </React.Fragment>
+              ));
+            })()}
           </div>
 
           <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
@@ -3645,18 +3731,7 @@ const NewApp = () => {
                 </>
               ) : sidebarView === "blueprint" && blueprintFlowchartFile && analysisResult?.func_dep_graph && !currentFunc ? (
                 <>
-                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
-                    <button
-                      onClick={() => { setBlueprintFlowchartFile(null); setAnalysisResult(null); }}
-                      style={{
-                        padding: '6px 12px', background: '#333', color: '#fff',
-                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
-                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
-                      }}
-                    >
-                      ← Back to Blueprint Map
-                    </button>
-                  </div>
+
                   <FuncDepGraph
                     depData={analysisResult.func_dep_graph}
                     onFuncClick={(funcName) => handleAnalyze(funcName)}
@@ -3669,18 +3744,7 @@ const NewApp = () => {
                 </>
               ) : sidebarView === "blueprint" && blueprintFlowchartFile && analysisResult?.graph_data ? (
                 <>
-                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
-                    <button
-                      onClick={() => { setBlueprintFlowchartFile(null); setAnalysisResult(null); }}
-                      style={{
-                        padding: '6px 12px', background: '#333', color: '#fff',
-                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
-                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
-                      }}
-                    >
-                      ← Back to Blueprint Map
-                    </button>
-                  </div>
+
                   <FlowGraph
                     ref={graphRef}
                     data={analysisResult.graph_data}
@@ -3749,18 +3813,7 @@ const NewApp = () => {
                 </>
               ) : sidebarView === "github" && githubFlowchartFile && analysisResult?.func_dep_graph && !currentFunc ? (
                 <>
-                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
-                    <button
-                      onClick={() => { setGithubFlowchartFile(null); setAnalysisResult(null); }}
-                      style={{
-                        padding: '6px 12px', background: '#333', color: '#fff',
-                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
-                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
-                      }}
-                    >
-                      ← Back to Repo Map
-                    </button>
-                  </div>
+
                   <FuncDepGraph
                     depData={analysisResult.func_dep_graph}
                     onFuncClick={(funcName) => handleAnalyze(funcName)}
@@ -3773,18 +3826,7 @@ const NewApp = () => {
                 </>
               ) : sidebarView === "github" && githubFlowchartFile && analysisResult?.graph_data ? (
                 <>
-                  <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10 }}>
-                    <button
-                      onClick={() => { setCurrentFunc(null); setAiExplanation(null); }}
-                      style={{
-                        padding: '6px 12px', background: '#333', color: '#fff',
-                        border: '1px solid #555', borderRadius: '4px', cursor: 'pointer',
-                        fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px'
-                      }}
-                    >
-                      ← Back to Dependencies
-                    </button>
-                  </div>
+
                   <FlowGraph
                     ref={graphRef}
                     data={analysisResult.graph_data}
@@ -4007,23 +4049,6 @@ const NewApp = () => {
             </div>
           ) : (
             <>
-              {/* Back to Dependencies button */}
-              {currentFunc && analysisResult?.func_dep_graph && (
-                <div style={{ padding: '8px 12px', borderBottom: '1px solid #333' }}>
-                  <button
-                    onClick={() => { setCurrentFunc(null); setAiExplanation(null); }}
-                    style={{
-                      width: '100%', padding: '7px 10px',
-                      background: '#7c4dff22', border: '1px solid #7c4dff44',
-                      borderRadius: '6px', cursor: 'pointer',
-                      color: '#b388ff', fontSize: '0.75rem', fontWeight: 600,
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                    }}
-                  >
-                    ← Back to Dependencies
-                  </button>
-                </div>
-              )}
               {/* Function List */}
               <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
                 <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
