@@ -18,8 +18,9 @@ import {
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
   Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
-  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard, BookOpen
+  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard, BookOpen, Sun, Moon
 } from "lucide-react";
+import './theme.css';
 import templates, { TEMPLATE_CATEGORIES } from './templates';
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
@@ -447,7 +448,7 @@ const TerminatorNode = ({ data }) => {
     <div style={{
       padding: "10px 20px",
       borderRadius: "25px",
-      background: "#1e1e1e",
+      background: "var(--bg-main)",
       color: textColor,
       border: `2px solid ${borderColor}`,
       textAlign: "center",
@@ -466,7 +467,7 @@ const TerminatorNode = ({ data }) => {
 const ProcessNode = ({ data }) => {
   if (!data.label) {
     return (
-      <div style={{ width: 10, height: 10, background: '#555', borderRadius: '50%' }}>
+      <div style={{ width: 10, height: 10, background: 'var(--border-muted)', borderRadius: '50%' }}>
         <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
         <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
       </div>
@@ -476,19 +477,19 @@ const ProcessNode = ({ data }) => {
     <div style={{
       padding: "12px",
       borderRadius: "4px",
-      background: "#1e1e1e",
+      background: "var(--bg-main)",
       color: "#e0e0e0",
-      border: "1px solid #fff",
+      border: "1px solid var(--text-bright)",
       textAlign: "left",
       minWidth: "120px",
       maxWidth: "250px",
       fontSize: "12px",
       fontFamily: "monospace",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+      boxShadow: "0 2px 4px rgba(var(--rgb-shadow-base),0.2)"
     }}>
       {data.label}
-      <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
-      <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
+      <Handle type="target" position={Position.Top} style={{ background: 'var(--border-muted)' }} />
+      <Handle type="source" position={Position.Bottom} style={{ background: 'var(--border-muted)' }} />
     </div>
   );
 };
@@ -500,7 +501,7 @@ const DecisionNode = ({ data }) => {
         position: "absolute",
         width: "60px",
         height: "60px",
-        background: "#1e1e1e",
+        background: "var(--bg-main)",
         border: "2px solid #dcb67a",
         transform: "rotate(45deg)",
         zIndex: -1,
@@ -509,9 +510,9 @@ const DecisionNode = ({ data }) => {
       <div style={{ zIndex: 1, fontSize: "10px", textAlign: "center", color: "#dcb67a", maxWidth: "80px", fontWeight: "bold" }}>
         {data.label}
       </div>
-      <Handle type="target" position={Position.Top} style={{ top: 10, background: '#555' }} />
-      <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 10, background: '#555' }} />
-      <Handle type="source" position={Position.Right} id="right" style={{ right: 10, background: '#555' }} />
+      <Handle type="target" position={Position.Top} style={{ top: 10, background: 'var(--border-muted)' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 10, background: 'var(--border-muted)' }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ right: 10, background: 'var(--border-muted)' }} />
     </div>
   );
 };
@@ -531,17 +532,17 @@ const LoopNode = ({ data }) => {
       <div style={{
         position: "absolute",
         inset: 2,
-        background: "#1e1e1e",
+        background: "var(--bg-main)",
         clipPath: "polygon(10% 0%, 90% 0%, 100% 50%, 90% 100%, 10% 100%, 0% 50%)",
         zIndex: -1
       }} />
       <div style={{ zIndex: 1, fontSize: "11px", textAlign: "center", color: "#00d8ff", maxWidth: "130px", fontWeight: "bold" }}>
         {data.label}
       </div>
-      <Handle type="target" position={Position.Top} style={{ top: 0, background: '#555' }} />
-      <Handle type="target" position={Position.Left} id="left" style={{ left: 0, background: '#555' }} />
-      <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 0, background: '#555' }} />
-      <Handle type="source" position={Position.Right} id="right" style={{ right: 0, background: '#555' }} />
+      <Handle type="target" position={Position.Top} style={{ top: 0, background: 'var(--border-muted)' }} />
+      <Handle type="target" position={Position.Left} id="left" style={{ left: 0, background: 'var(--border-muted)' }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ bottom: 0, background: 'var(--border-muted)' }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ right: 0, background: 'var(--border-muted)' }} />
     </div>
   );
 };
@@ -711,7 +712,7 @@ const FuncDepNode = ({ data }) => {
     return `hsl(${0}, 85%, ${50 - (t - 0.66) * 30}%)`; // orange → dark red
   };
 
-  const baseColor = data.heatmapMode ? getHeatmapColor(cx) : (langColors[lang] || "#888");
+  const baseColor = data.heatmapMode ? getHeatmapColor(cx) : (langColors[lang] || "var(--text-muted)");
 
   // If cyclic, force red to indicate danger. Otherwise, keep lang color. 
   // Wait, the prompt says "python should be blue, etc". 
@@ -730,7 +731,7 @@ const FuncDepNode = ({ data }) => {
       style={{
         padding: '12px 20px', borderRadius: '12px',
         border: `2px solid ${activeColor}`,
-        background: `linear-gradient(135deg, ${activeColor}11, #1e1e1e)`,
+        background: `linear-gradient(135deg, ${activeColor}11, var(--bg-main))`,
         color: '#e0e0e0', fontSize: '0.85rem', fontFamily: 'monospace',
         textAlign: 'center', cursor: 'pointer', minWidth: '120px',
         transition: 'all 0.2s', boxShadow: `0 2px 12px ${activeColor}22`,
@@ -738,9 +739,9 @@ const FuncDepNode = ({ data }) => {
       }}>
       {isCyclic && (
         <div style={{
-          position: 'absolute', top: -10, right: -10, background: '#f44336', color: '#fff',
+          position: 'absolute', top: -10, right: -10, background: '#f44336', color: 'var(--text-bright)',
           borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center',
-          justifyContent: 'center', fontSize: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+          justifyContent: 'center', fontSize: '10px', boxShadow: '0 2px 5px rgba(var(--rgb-shadow-base),0.5)',
           zIndex: 10
         }} title="Circular Dependency Detected">
           ⚠️
@@ -754,7 +755,7 @@ const FuncDepNode = ({ data }) => {
           bottom: '100%',
           left: '50%',
           transform: 'translate(-50%, -8px)',
-          background: 'rgba(0,0,0,0.85)',
+          background: 'rgba(var(--rgb-shadow-base),0.85)',
           color: '#eee',
           padding: '6px 10px',
           borderRadius: '6px',
@@ -762,16 +763,16 @@ const FuncDepNode = ({ data }) => {
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
           backdropFilter: 'blur(4px)',
-          border: '1px solid rgba(255,255,255,0.1)',
+          border: '1px solid rgba(var(--rgb-text-base),0.1)',
           zIndex: 1000,
           display: 'flex',
           gap: '10px'
         }}>
           <span>📤 Out: {stats.imports}</span>
-          <span style={{ borderLeft: '1px solid #555', paddingLeft: '10px' }}>📥 In: {stats.importedBy}</span>
+          <span style={{ borderLeft: '1px solid var(--border-muted)', paddingLeft: '10px' }}>📥 In: {stats.importedBy}</span>
           <div style={{
             position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-            borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid rgba(0,0,0,0.85)'
+            borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid rgba(var(--rgb-shadow-base),0.85)'
           }} />
         </div>
       )}
@@ -823,8 +824,8 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
         style: { stroke: strokeColor, strokeWidth, opacity },
         markerEnd: { type: 'arrowclosed', color: strokeColor },
         label: isCyclic ? '⚠️ cycle' : (e.data?.label || 'calls'),
-        labelStyle: { fill: isCyclic ? '#f44336' : '#888', fontSize: '0.6rem', fontWeight: isCyclic ? 'bold' : 'normal' },
-        labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
+        labelStyle: { fill: isCyclic ? '#f44336' : 'var(--text-muted)', fontSize: '0.6rem', fontWeight: isCyclic ? 'bold' : 'normal' },
+        labelBgStyle: { fill: 'var(--bg-main)', fillOpacity: 0.8 },
       };
     });
   }, []);
@@ -975,7 +976,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             fitView
             fitViewOptions={{ padding: 0.3 }}
           >
-            <Background color="#1e1e1e" gap={20} size={1} />
+            <Background color="var(--bg-main)" gap={20} size={1} />
             <Controls />
           </ReactFlow>
           <button
@@ -983,10 +984,10 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
             title="Reset node positions"
             style={{
               position: 'absolute', bottom: 15, left: 55, zIndex: 100, // Bottom-left near zoom controls
-              background: '#333', border: '1px solid #555', borderRadius: '6px',
+              background: 'var(--border-main)', border: '1px solid var(--border-muted)', borderRadius: '6px',
               color: '#aaa', padding: '6px 12px', cursor: 'pointer',
               fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+              boxShadow: '0 4px 6px rgba(var(--rgb-shadow-base),0.3)'
             }}
           >
             ↻ Reset Layout
@@ -995,18 +996,18 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
           {tooltip && (
             <div style={{
               position: 'fixed', left: tooltip.x + 15, top: tooltip.y + 15, zIndex: 9999,
-              background: 'rgba(20,20,20,0.95)', border: '1px solid #444', borderRadius: '6px',
-              padding: '10px 14px', color: '#fff', pointerEvents: 'none',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.5)', maxWidth: '300px', fontSize: '0.75rem'
+              background: 'rgba(20,20,20,0.95)', border: '1px solid var(--border-light)', borderRadius: '6px',
+              padding: '10px 14px', color: 'var(--text-bright)', pointerEvents: 'none',
+              boxShadow: '0 4px 12px rgba(var(--rgb-shadow-base),0.5)', maxWidth: '300px', fontSize: '0.75rem'
             }}>
               <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '0.85rem', color: '#b388ff' }}>{tooltip.data.label || 'Node'}</div>
-              {tooltip.data.lineCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Line Count: <span style={{color: '#fff'}}>{tooltip.data.lineCount}</span></div>}
+              {tooltip.data.lineCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Line Count: <span style={{color: 'var(--text-bright)'}}>{tooltip.data.lineCount}</span></div>}
               {tooltip.data.complexity !== undefined && <div style={{ color: '#aaa', marginBottom: '6px' }}>Complexity: <span style={{color: '#ff9800', fontWeight:'bold'}}>{tooltip.data.complexity}</span></div>}
               
               {tooltip.data.snippet && (
-                <div style={{ marginTop: '8px', borderTop: '1px solid #333', paddingTop: '6px' }}>
-                  <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>Preview</div>
-                  <pre style={{ margin: 0, padding: '4px 6px', background: '#111', borderRadius: '4px', color: '#4caf50', overflowX: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-main)', paddingTop: '6px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Preview</div>
+                  <pre style={{ margin: 0, padding: '4px 6px', background: 'var(--bg-very-dark)', borderRadius: '4px', color: '#4caf50', overflowX: 'hidden', textOverflow: 'ellipsis' }}>
                     {tooltip.data.snippet}
                   </pre>
                 </div>
@@ -1015,7 +1016,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
           )}
         </>
       ) : (
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#555', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'var(--border-muted)', textAlign: 'center' }}>
           <p style={{ fontSize: '1.2rem' }}>📊 Function Dependencies</p>
           <p style={{ fontSize: '0.8rem' }}>No dependencies detected</p>
         </div>
@@ -1110,7 +1111,7 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
       if (!node) return;
 
       toPng(node, {
-        backgroundColor: '#1e1e1e',
+        backgroundColor: 'var(--bg-main)',
         width: width,
         height: height,
         style: {
@@ -1244,11 +1245,11 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         fitView
         fitViewOptions={{ padding: 0.2 }}
       >
-        <Background color="#333" gap={16} />
+        <Background color="var(--border-main)" gap={16} />
         <Controls />
         <MiniMap
           nodeColor={(n) => {
-            if (n.type === 'process') return '#888888'; // Grey for standard statements
+            if (n.type === 'process') return 'var(--text-muted)'; // Grey for standard statements
             if (n.type === 'decision') return '#ffb74d'; // Orange-ish for decision
             if (n.type === 'loop') return '#2196f3'; // Blue for loop
             if (n.type === 'externalCall') return '#7c4dff'; // Purple for external
@@ -1256,16 +1257,16 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
               const labelLower = (n.data?.label || '').toLowerCase();
               return labelLower.startsWith('start') ? '#4caf50' : '#ff5252'; // Green for start, Red for return
             }
-            return '#555555'; // Fallback
+            return 'var(--border-muted)'; // Fallback
           }}
           nodeStrokeWidth={3}
           style={{
-            backgroundColor: '#1e1e1e',
-            border: '1px solid #444',
+            backgroundColor: 'var(--bg-main)',
+            border: '1px solid var(--border-light)',
             borderRadius: '8px',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+            boxShadow: '0 4px 6px rgba(var(--rgb-shadow-base),0.3)'
           }}
-          maskColor="rgba(0, 0, 0, 0.4)"
+          maskColor="rgba(var(--rgb-shadow-base), 0.4)"
           position="bottom-right"
         />
       </ReactFlow>
@@ -1274,10 +1275,10 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
         title="Reset node positions"
         style={{
           position: 'absolute', bottom: 15, left: 55, zIndex: 100, // Bottom-left near zoom controls
-          background: '#333', border: '1px solid #555', borderRadius: '6px',
+          background: 'var(--border-main)', border: '1px solid var(--border-muted)', borderRadius: '6px',
           color: '#aaa', padding: '6px 12px', cursor: 'pointer',
           fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+          boxShadow: '0 4px 6px rgba(var(--rgb-shadow-base),0.3)'
         }}
       >
         ↻ Reset Layout
@@ -1292,20 +1293,20 @@ const FlowGraph = forwardRef(({ data, onNodeClick, graphMemory, setGraphMemory, 
 
 // Language color palette
 const LANG_COLORS = {
-  py: { bg: '#2b5b84', border: '#3572A5', text: '#fff', label: 'Python' },
-  java: { bg: '#6d4c0a', border: '#b07219', text: '#fff', label: 'Java' },
-  js: { bg: '#6b5e00', border: '#f1e05a', text: '#fff', label: 'JS' },
-  jsx: { bg: '#6b5e00', border: '#f1e05a', text: '#fff', label: 'JSX' },
-  ts: { bg: '#1a4b6e', border: '#3178c6', text: '#fff', label: 'TS' },
-  tsx: { bg: '#1a4b6e', border: '#3178c6', text: '#fff', label: 'TSX' },
-  json: { bg: '#4a3800', border: '#cb8c00', text: '#fff', label: 'JSON' },
-  css: { bg: '#1a3a5c', border: '#563d7c', text: '#fff', label: 'CSS' },
-  html: { bg: '#6c2e00', border: '#e34c26', text: '#fff', label: 'HTML' },
-  md: { bg: '#333', border: '#888', text: '#fff', label: 'Markdown' },
-  cpp: { bg: '#513998', border: '#a074c4', text: '#fff', label: 'C++' },
-  cc: { bg: '#513998', border: '#a074c4', text: '#fff', label: 'C++' },
-  c: { bg: '#283593', border: '#5c6bc0', text: '#fff', label: 'C' },
-  default: { bg: '#333', border: '#666', text: '#ccc', label: 'File' }
+  py: { bg: '#2b5b84', border: '#3572A5', text: 'var(--text-bright)', label: 'Python' },
+  java: { bg: '#6d4c0a', border: '#b07219', text: 'var(--text-bright)', label: 'Java' },
+  js: { bg: '#6b5e00', border: '#f1e05a', text: 'var(--text-bright)', label: 'JS' },
+  jsx: { bg: '#6b5e00', border: '#f1e05a', text: 'var(--text-bright)', label: 'JSX' },
+  ts: { bg: '#1a4b6e', border: '#3178c6', text: 'var(--text-bright)', label: 'TS' },
+  tsx: { bg: '#1a4b6e', border: '#3178c6', text: 'var(--text-bright)', label: 'TSX' },
+  json: { bg: '#4a3800', border: '#cb8c00', text: 'var(--text-bright)', label: 'JSON' },
+  css: { bg: '#1a3a5c', border: '#563d7c', text: 'var(--text-bright)', label: 'CSS' },
+  html: { bg: '#6c2e00', border: '#e34c26', text: 'var(--text-bright)', label: 'HTML' },
+  md: { bg: 'var(--border-main)', border: 'var(--text-muted)', text: 'var(--text-bright)', label: 'Markdown' },
+  cpp: { bg: '#513998', border: '#a074c4', text: 'var(--text-bright)', label: 'C++' },
+  cc: { bg: '#513998', border: '#a074c4', text: 'var(--text-bright)', label: 'C++' },
+  c: { bg: '#283593', border: '#5c6bc0', text: 'var(--text-bright)', label: 'C' },
+  default: { bg: 'var(--border-main)', border: '#666', text: 'var(--text-light)', label: 'File' }
 };
 
 const getFileColor = (filename) => {
@@ -1334,7 +1335,7 @@ const FileDepNode = ({ data }) => {
       textAlign: 'center',
       boxShadow: isSelected
         ? `0 0 20px ${colors.border}66, inset 0 0 10px ${colors.border}33`
-        : `0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)`,
+        : `0 4px 12px rgba(var(--rgb-shadow-base), 0.2), inset 0 1px 1px rgba(var(--rgb-text-base), 0.1)`,
       transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
       cursor: 'pointer',
       opacity: isDimmed ? 0.2 : 1,
@@ -1363,24 +1364,24 @@ const FileDepNode = ({ data }) => {
         fontWeight: 'bold',
         marginBottom: '4px',
         letterSpacing: '1px',
-        textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+        textShadow: '0 1px 2px rgba(var(--rgb-shadow-base),0.5)',
       }}>
         {colors.label}
       </div>
 
       <div style={{
-        color: '#fff',
+        color: 'var(--text-bright)',
         fontSize: '0.9rem',
         fontWeight: isSelected ? '700' : '500',
         wordBreak: 'break-word',
-        textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+        textShadow: '0 2px 4px rgba(var(--rgb-shadow-base),0.5)',
       }}>
         {data.label}
       </div>
 
       {data.folder && (
         <div style={{
-          color: 'rgba(255,255,255,0.5)',
+          color: 'rgba(var(--rgb-text-base),0.5)',
           fontSize: '0.65rem',
           marginTop: '4px',
           fontStyle: 'italic',
@@ -1396,7 +1397,7 @@ const FileDepNode = ({ data }) => {
           bottom: '100%',
           left: '50%',
           transform: 'translate(-50%, -8px)',
-          background: 'rgba(0,0,0,0.85)',
+          background: 'rgba(var(--rgb-shadow-base),0.85)',
           color: '#eee',
           padding: '6px 10px',
           borderRadius: '6px',
@@ -1404,13 +1405,13 @@ const FileDepNode = ({ data }) => {
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
           backdropFilter: 'blur(4px)',
-          border: '1px solid rgba(255,255,255,0.1)',
+          border: '1px solid rgba(var(--rgb-text-base),0.1)',
           zIndex: 1000,
           display: 'flex',
           gap: '10px'
         }}>
           <span>📤 Imports: {stats.imports}</span>
-          <span style={{ borderLeft: '1px solid #555', paddingLeft: '10px' }}>📥 Used by: {stats.importedBy}</span>
+          <span style={{ borderLeft: '1px solid var(--border-muted)', paddingLeft: '10px' }}>📥 Used by: {stats.importedBy}</span>
           <div style={{
             position: 'absolute',
             top: '100%',
@@ -1418,7 +1419,7 @@ const FileDepNode = ({ data }) => {
             transform: 'translateX(-50%)',
             borderLeft: '6px solid transparent',
             borderRight: '6px solid transparent',
-            borderTop: '6px solid rgba(0,0,0,0.85)',
+            borderTop: '6px solid rgba(var(--rgb-shadow-base),0.85)',
           }} />
         </div>
       )}
@@ -1596,7 +1597,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
             return 'imports';
           })(),
           labelStyle: { fill: '#aaa', fontSize: '0.6rem', fontFamily: 'monospace' },
-          labelBgStyle: { fill: '#1e1e1e', fillOpacity: 0.8 },
+          labelBgStyle: { fill: 'var(--bg-main)', fillOpacity: 0.8 },
         });
       });
     });
@@ -1732,21 +1733,21 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
             fitView
             fitViewOptions={{ padding: 0.3 }}
           >
-            <Background color="#1e1e1e" gap={20} size={1} />
+            <Background color="var(--bg-main)" gap={20} size={1} />
             <Controls />
           </ReactFlow>
 
           {tooltip && (
           <div style={{
             position: 'fixed', left: tooltip.x + 15, top: tooltip.y + 15, zIndex: 9999,
-            background: 'rgba(20,20,20,0.95)', border: '1px solid #444', borderRadius: '6px',
-            padding: '10px 14px', color: '#fff', pointerEvents: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)', maxWidth: '300px', fontSize: '0.75rem'
+            background: 'rgba(20,20,20,0.95)', border: '1px solid var(--border-light)', borderRadius: '6px',
+            padding: '10px 14px', color: 'var(--text-bright)', pointerEvents: 'none',
+            boxShadow: '0 4px 12px rgba(var(--rgb-shadow-base),0.5)', maxWidth: '300px', fontSize: '0.75rem'
           }}>
             <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '0.85rem', color: '#b388ff' }}>{tooltip.data.label || 'Node'}</div>
-            {tooltip.data.language && <div style={{ color: '#aaa', marginBottom: '2px' }}>Language: <span style={{color: '#fff', textTransform:'capitalize'}}>{tooltip.data.language}</span></div>}
-            {tooltip.data.lineCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Lines: <span style={{color: '#fff'}}>{tooltip.data.lineCount}</span></div>}
-            {tooltip.data.functionCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Functions: <span style={{color: '#fff'}}>{tooltip.data.functionCount}</span></div>}
+            {tooltip.data.language && <div style={{ color: '#aaa', marginBottom: '2px' }}>Language: <span style={{color: 'var(--text-bright)', textTransform:'capitalize'}}>{tooltip.data.language}</span></div>}
+            {tooltip.data.lineCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Lines: <span style={{color: 'var(--text-bright)'}}>{tooltip.data.lineCount}</span></div>}
+            {tooltip.data.functionCount !== undefined && <div style={{ color: '#aaa', marginBottom: '2px' }}>Functions: <span style={{color: 'var(--text-bright)'}}>{tooltip.data.functionCount}</span></div>}
             {tooltip.data.maxComplexity !== undefined && <div style={{ color: '#aaa' }}>Max Complexity: <span style={{color: '#ff9800', fontWeight:'bold'}}>{tooltip.data.maxComplexity}</span></div>}
           </div>
         )}
@@ -1755,7 +1756,7 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
         <div style={{
           position: 'absolute', top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          color: '#555', textAlign: 'center',
+          color: 'var(--border-muted)', textAlign: 'center',
         }}>
           <p style={{ fontSize: '1.2rem' }}>📊 File Dependency Map</p>
           <p style={{ fontSize: '0.8rem' }}>
@@ -1771,6 +1772,14 @@ const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, grap
 // 4. MAIN APP
 // ===========================================
 const NewApp = () => {
+  // Theme State
+  const [theme, setTheme] = useState(() => localStorage.getItem('codemap-theme') || 'dark');
+  
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('codemap-theme', theme);
+  }, [theme]);
+
   // UI State
   const [sidebarView, setSidebarView] = useState("explorer");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2364,6 +2373,80 @@ const NewApp = () => {
     }
   }, [selectedFilePath, currentFileContent]);
 
+  // Keyboard Shortcuts (Ctrl+Shift+F, Escape, Ctrl+E, Ctrl+H)
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore key combos if user is typing in an input other than search
+      if (e.target.tagName === 'INPUT' && e.target !== searchInputRef.current) return;
+      if (e.target.tagName === 'TEXTAREA') return;
+
+      // Ctrl+Shift+F: Focus global search
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      
+      // Ctrl+E: Toggle editor panel
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        setViewMode(prev => prev === 'code' ? 'split' : (prev === 'split' ? 'graph' : 'code'));
+        return;
+      }
+
+      // Ctrl+H: Toggle heatmap
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        setHeatmapMode(prev => !prev);
+        return;
+      }
+
+      // Escape: Go back one level / close modals
+      if (e.key === 'Escape') {
+        if (showApiKeyModal) {
+          setShowApiKeyModal(false);
+          return;
+        }
+        if (currentFuncsMap[sidebarView]) {
+          setCurrentFunc(null);
+          setAiExplanation(null);
+          return;
+        }
+        if (sidebarView === "explorer" && activeFileName) {
+          setSelectedFilePath(null);
+          setAnalysisResult(null);
+          return;
+        }
+        if (sidebarView === "github" && githubSelectedFile) {
+          setGithubFlowchartFile(null);
+          setAnalysisResult(null);
+          return;
+        }
+        if (sidebarView === "blueprint" && blueprintFlowchartFile) {
+          setBlueprintFlowchartFile(null);
+          setAnalysisResult(null);
+          return;
+        }
+        if (sidebarView === "templates" && selectedTemplate) {
+          setSelectedTemplate(null);
+          setTemplateCode("");
+          setAnalysisResult(null);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    showApiKeyModal, currentFuncsMap, sidebarView, activeFileName, 
+    githubSelectedFile, blueprintFlowchartFile, selectedTemplate,
+    setCurrentFunc, setGithubFlowchartFile, setBlueprintFlowchartFile, 
+    setAiExplanation, setAnalysisResult, setViewMode, setHeatmapMode
+  ]);
+
   // Handle file upload (multiple files)
   const handleUploadFiles = useCallback((files) => {
     files.forEach(file => {
@@ -2815,17 +2898,17 @@ const NewApp = () => {
   }, []);
 
   return (
-    <div ref={containerRef} style={{ display: "flex", height: "100vh", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontFamily: "Segoe UI, sans-serif" }}>
+    <div ref={containerRef} style={{ display: "flex", height: "100vh", backgroundColor: "var(--bg-main)", color: "var(--text-main)", fontFamily: "Segoe UI, sans-serif" }}>
 
       {/* 1. ACTIVITY BAR */}
-      <div style={{ width: "50px", background: "#333", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: "25px" }}>
+      <div style={{ width: "50px", background: "var(--border-main)", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: "25px" }}>
 
         <div
           onClick={() => { setSidebarView("explorer"); setSidebarCollapsed(false); }}
           style={{ cursor: "pointer", borderLeft: sidebarView === "explorer" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="Project Explorer"
         >
-          <Folder size={24} color={sidebarView === "explorer" ? "#fff" : "#777"} />
+          <Folder size={24} color={sidebarView === "explorer" ? "var(--text-bright)" : "#777"} />
         </div>
 
         <div
@@ -2833,7 +2916,7 @@ const NewApp = () => {
           style={{ cursor: "pointer", borderLeft: sidebarView === "snippets" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="Code Snippets"
         >
-          <ClipboardList size={24} color={sidebarView === "snippets" ? "#fff" : "#777"} />
+          <ClipboardList size={24} color={sidebarView === "snippets" ? "var(--text-bright)" : "#777"} />
         </div>
 
         <div
@@ -2841,7 +2924,7 @@ const NewApp = () => {
           style={{ cursor: "pointer", borderLeft: sidebarView === "github" ? "2px solid #4caf50" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
           title="GitHub Explorer"
         >
-          <Github size={24} color={sidebarView === "github" ? "#fff" : "#777"} />
+          <Github size={24} color={sidebarView === "github" ? "var(--text-bright)" : "#777"} />
         </div>
 
         <div
@@ -2871,7 +2954,7 @@ const NewApp = () => {
 
       {/* 2. SIDEBAR CONTENT */}
       {!sidebarCollapsed && (
-        <div style={{ width: `${sidebarWidth}px`, background: "#252526", display: "flex", flexDirection: "column", borderRight: "none", flexShrink: 0 }}>
+        <div style={{ width: `${sidebarWidth}px`, background: "var(--bg-sidebar)", display: "flex", flexDirection: "column", borderRight: "none", flexShrink: 0 }}>
 
           {/* VIEW A: EXPLORER - Now using FileExplorer component */}
           {sidebarView === "explorer" && (
@@ -2907,9 +2990,9 @@ const NewApp = () => {
                     style={{
                       display: "flex", alignItems: "center", gap: "6px",
                       padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                      background: activeSnippetId === snippet.id ? "#2a2d2e" : "transparent",
+                      background: activeSnippetId === snippet.id ? "var(--bg-hover)" : "transparent",
                       borderLeft: activeSnippetId === snippet.id ? "2px solid #4caf50" : "2px solid transparent",
-                      fontSize: "0.8rem", color: activeSnippetId === snippet.id ? "#fff" : "#aaa"
+                      fontSize: "0.8rem", color: activeSnippetId === snippet.id ? "var(--text-bright)" : "#aaa"
                     }}
                     onClick={() => setActiveSnippetId(snippet.id)}
                   >
@@ -2922,13 +3005,13 @@ const NewApp = () => {
                           onBlur={(e) => handleRenameSnippet(snippet.id, e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSnippet(snippet.id, e.target.value); if (e.key === 'Escape') setRenamingSnippetId(null); }}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ background: "#1e1e1e", border: "1px solid #4caf50", color: "#fff", width: "100%", padding: "2px 4px", borderRadius: "3px", fontSize: "0.8rem", outline: "none" }}
+                          style={{ background: "var(--bg-main)", border: "1px solid #4caf50", color: "var(--text-bright)", width: "100%", padding: "2px 4px", borderRadius: "3px", fontSize: "0.8rem", outline: "none" }}
                         />
                       ) : (
                         <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{snippet.name}</span>
                       )}
                     </div>
-                    <span style={{ fontSize: "0.6rem", color: "#555", textTransform: "uppercase", flexShrink: 0 }}>{snippet.language}</span>
+                    <span style={{ fontSize: "0.6rem", color: "var(--border-muted)", textTransform: "uppercase", flexShrink: 0 }}>{snippet.language}</span>
                     <Edit3
                       size={12} color="#666" style={{ cursor: "pointer", flexShrink: 0 }}
                       onClick={(e) => { e.stopPropagation(); setRenamingSnippetId(snippet.id); }}
@@ -2936,7 +3019,7 @@ const NewApp = () => {
                     />
                     {snippets.length > 1 && (
                       <Trash2
-                        size={12} color="#555" style={{ cursor: "pointer", flexShrink: 0 }}
+                        size={12} color="var(--border-muted)" style={{ cursor: "pointer", flexShrink: 0 }}
                         onClick={(e) => { e.stopPropagation(); handleDeleteSnippet(snippet.id); }}
                         title="Delete"
                       />
@@ -2944,7 +3027,7 @@ const NewApp = () => {
                   </div>
                 ))}
 
-                <div style={{ marginTop: "20px", borderTop: "1px solid #333", paddingTop: "10px" }}>
+                <div style={{ marginTop: "20px", borderTop: "1px solid var(--border-main)", paddingTop: "10px" }}>
                   <button style={actionBtnStyle} onClick={handleLoadSnippet}>
                     Inject to {activeFileName}
                   </button>
@@ -2956,12 +3039,12 @@ const NewApp = () => {
           {/* VIEW C: GITHUB */}
           {sidebarView === "github" && (
             <>
-              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px" }}>
-                <Github size={14} color="#fff" /> GitHub
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Github size={14} color="var(--text-bright)" /> GitHub
               </div>
 
               {/* Repo Input */}
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                 <div style={{ display: "flex", gap: "6px" }}>
                   <input
                     type="text"
@@ -2970,16 +3053,16 @@ const NewApp = () => {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleLoadRepo(); }}
                     placeholder="owner/repo"
                     style={{
-                      flex: 1, background: "#1e1e1e", border: "1px solid #444", borderRadius: "4px",
-                      padding: "6px 10px", color: "#d4d4d4", fontSize: "0.8rem", outline: "none"
+                      flex: 1, background: "var(--bg-main)", border: "1px solid var(--border-light)", borderRadius: "4px",
+                      padding: "6px 10px", color: "var(--text-main)", fontSize: "0.8rem", outline: "none"
                     }}
                   />
                   <button
                     onClick={handleLoadRepo}
                     disabled={githubLoadingRepo || !repoInput.trim()}
                     style={{
-                      background: githubLoadingRepo ? "#333" : "#238636", border: "none", borderRadius: "4px",
-                      padding: "6px 12px", color: "#fff", fontSize: "0.75rem", cursor: githubLoadingRepo ? "wait" : "pointer",
+                      background: githubLoadingRepo ? "var(--border-main)" : "#238636", border: "none", borderRadius: "4px",
+                      padding: "6px 12px", color: "var(--text-bright)", fontSize: "0.75rem", cursor: githubLoadingRepo ? "wait" : "pointer",
                       display: "flex", alignItems: "center", gap: "4px"
                     }}
                   >
@@ -3006,13 +3089,13 @@ const NewApp = () => {
                 <div
                   onClick={() => setShowApiKeyModal(true)}
                   style={{
-                    padding: "6px 12px", borderBottom: "1px solid #333", cursor: "pointer",
+                    padding: "6px 12px", borderBottom: "1px solid var(--border-main)", cursor: "pointer",
                     display: "flex", alignItems: "center", gap: "6px", fontSize: "0.65rem",
                   }}
                   title="Open API Settings to manage your GitHub token"
                 >
-                  <Settings size={10} color="#888" />
-                  <span style={{ color: "#888" }}>API</span>
+                  <Settings size={10} color="var(--text-muted)" />
+                  <span style={{ color: "var(--text-muted)" }}>API</span>
                   <span style={{
                     marginLeft: "auto", padding: "2px 6px", borderRadius: "8px",
                     background: githubRateInfo.remaining < 10 ? "#f4433620" : "#23863620",
@@ -3025,7 +3108,7 @@ const NewApp = () => {
 
               {/* Analysis Loading */}
               {githubBlueprintLoading && (
-                <div style={{ padding: "20px 12px", textAlign: "center", borderBottom: "1px solid #333" }}>
+                <div style={{ padding: "20px 12px", textAlign: "center", borderBottom: "1px solid var(--border-main)" }}>
                   <Loader size={20} className="spin" style={{ marginBottom: "8px" }} />
                   <div style={{ fontSize: "0.75rem", color: "#4caf50" }}>Analyzing repository...</div>
                   <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "4px" }}>Fetching and processing code files</div>
@@ -3034,7 +3117,7 @@ const NewApp = () => {
 
               {/* Project Stats (after analysis) */}
               {githubBlueprintData?.project_stats && (
-                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                   <div style={{ fontSize: "0.65rem", color: "#238636", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
                     {[
@@ -3043,7 +3126,7 @@ const NewApp = () => {
                       { label: "Lines", value: githubBlueprintData.project_stats.total_lines, color: "#00bcd4" },
                       { label: "Languages", value: githubBlueprintData.project_stats.languages.length, color: "#e040fb" },
                     ].map((s, i) => (
-                      <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
+                      <div key={i} style={{ background: "var(--bg-main)", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
                         <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
                         <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
                       </div>
@@ -3054,7 +3137,7 @@ const NewApp = () => {
 
               {/* Health Insights (after analysis) */}
               {githubInsights && (
-                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                   <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {githubInsights.cyclesCount > 0 && (
@@ -3063,14 +3146,14 @@ const NewApp = () => {
                       </div>
                     )}
                     {githubInsights.mostImported && (
-                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #238636", fontSize: "0.75rem", color: "#ccc" }}>
-                        <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
+                      <div style={{ background: "var(--bg-main)", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #238636", fontSize: "0.75rem", color: "var(--text-light)" }}>
+                        <span style={{ fontWeight: "bold", color: "var(--text-bright)" }}>Most Relied Upon:</span><br />
                         {githubInsights.mostImported.file} ({githubInsights.mostImported.count} imports)
                       </div>
                     )}
                     {githubInsights.isolatedCount > 0 && (
-                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
-                        <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {githubInsights.isolatedCount}
+                      <div style={{ background: "var(--bg-main)", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "var(--text-light)" }}>
+                        <span style={{ fontWeight: "bold", color: "var(--text-bright)" }}>Isolated Files:</span> {githubInsights.isolatedCount}
                       </div>
                     )}
                     {!githubInsights.cyclesCount && !githubInsights.mostImported && !githubInsights.isolatedCount > 0 && (
@@ -3085,7 +3168,7 @@ const NewApp = () => {
                 const showAll = githubFileCommits._showAll;
                 const visibleCommits = showAll ? githubFileCommits : githubFileCommits.slice(0, 3);
                 return (
-                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #333" }}>
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-main)" }}>
                     <div
                       style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "4px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}
                       onClick={() => {
@@ -3111,7 +3194,7 @@ const NewApp = () => {
                           background: "transparent", textDecoration: "none",
                           transition: "background 0.15s",
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = "#1e1e1e"}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--bg-main)"}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                       >
                         {c.avatar && (
@@ -3120,7 +3203,7 @@ const NewApp = () => {
                         <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.7rem", color: "#aaa" }}>
                           {c.message}
                         </div>
-                        <span style={{ fontSize: "0.55rem", color: "#555", flexShrink: 0 }}>{c.sha}</span>
+                        <span style={{ fontSize: "0.55rem", color: "var(--border-muted)", flexShrink: 0 }}>{c.sha}</span>
                       </a>
                     ))}
                     {!showAll && githubFileCommits.length > 3 && (
@@ -3141,20 +3224,20 @@ const NewApp = () => {
                   <div
                     onMouseDown={(e) => startGithubFilesDrag(e, -1)}
                     style={{
-                      height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
+                      height: "4px", background: "rgba(var(--rgb-text-base),0.02)", cursor: "ns-resize",
                       transition: "background 0.2s"
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
-                    onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(var(--rgb-text-base),0.02)"}
                   />
-                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #333", height: `${githubFilesHeight}px`, overflowY: "auto" }}>
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-main)", height: `${githubFilesHeight}px`, overflowY: "auto" }}>
                     <div style={{ fontSize: "0.65rem", color: "#666", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px", display: "flex", justifyContent: "space-between" }}>
                       <span>Analyzed Files</span>
                       <span>{Object.keys(githubBlueprintData.file_info).length} files</span>
                     </div>
                     {Object.entries(githubBlueprintData.file_info).map(([path, info]) => {
                       const filename = path.split('/').pop() || path;
-                      const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                      const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: 'var(--border-muted)' };
                       return (
                         <div
                           key={path}
@@ -3166,7 +3249,7 @@ const NewApp = () => {
                         >
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
                           <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
-                          <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
+                          <span style={{ fontSize: "0.6rem", color: "var(--border-muted)" }}>{info.functions.length}f</span>
                         </div>
                       );
                     })}
@@ -3174,11 +3257,11 @@ const NewApp = () => {
                   <div
                     onMouseDown={(e) => startGithubFilesDrag(e, 1)}
                     style={{
-                      height: "4px", background: "rgba(255,255,255,0.02)", cursor: "ns-resize",
+                      height: "4px", background: "rgba(var(--rgb-text-base),0.02)", cursor: "ns-resize",
                       transition: "background 0.2s", marginBottom: "4px"
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = "#007fd4"}
-                    onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(var(--rgb-text-base),0.02)"}
                   />
                 </>
               )}
@@ -3198,12 +3281,12 @@ const NewApp = () => {
           {/* VIEW D: PROJECT BLUEPRINT */}
           {sidebarView === "blueprint" && (
             <>
-              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
                 <LayoutDashboard size={14} color="#7c4dff" /> Project Blueprint
               </div>
 
               {/* Upload Area */}
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                 <label style={{
                   display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
                   padding: "10px", border: "2px dashed #7c4dff44", borderRadius: "8px",
@@ -3279,7 +3362,7 @@ const NewApp = () => {
 
               {/* Project Stats */}
               {blueprintData?.project_stats && (
-                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                   <div style={{ fontSize: "0.65rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Stats</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
                     {[
@@ -3288,7 +3371,7 @@ const NewApp = () => {
                       { label: "Lines", value: blueprintData.project_stats.total_lines, color: "#00bcd4" },
                       { label: "Languages", value: blueprintData.project_stats.languages.length, color: "#e040fb" },
                     ].map((s, i) => (
-                      <div key={i} style={{ background: "#1e1e1e", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
+                      <div key={i} style={{ background: "var(--bg-main)", borderRadius: "6px", padding: "6px 8px", textAlign: "center" }}>
                         <div style={{ fontSize: "1rem", fontWeight: 700, color: s.color }}>{s.value}</div>
                         <div style={{ fontSize: "0.6rem", color: "#666" }}>{s.label}</div>
                       </div>
@@ -3299,7 +3382,7 @@ const NewApp = () => {
 
               {/* Health Insights */}
               {blueprintInsights && (
-                <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                   <div style={{ fontSize: "0.65rem", color: "#f44336", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Health Insights</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     {blueprintInsights.cyclesCount > 0 && (
@@ -3308,14 +3391,14 @@ const NewApp = () => {
                       </div>
                     )}
                     {blueprintInsights.mostImported && (
-                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #7c4dff", fontSize: "0.75rem", color: "#ccc" }}>
-                        <span style={{ fontWeight: "bold", color: "#fff" }}>Most Relied Upon:</span><br />
+                      <div style={{ background: "var(--bg-main)", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #7c4dff", fontSize: "0.75rem", color: "var(--text-light)" }}>
+                        <span style={{ fontWeight: "bold", color: "var(--text-bright)" }}>Most Relied Upon:</span><br />
                         {blueprintInsights.mostImported.file} ({blueprintInsights.mostImported.count} imports)
                       </div>
                     )}
                     {blueprintInsights.isolatedCount > 0 && (
-                      <div style={{ background: "#1e1e1e", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "#ccc" }}>
-                        <span style={{ fontWeight: "bold", color: "#fff" }}>Isolated Files:</span> {blueprintInsights.isolatedCount}
+                      <div style={{ background: "var(--bg-main)", padding: "6px 8px", borderRadius: "4px", borderLeft: "3px solid #9e9e9e", fontSize: "0.75rem", color: "var(--text-light)" }}>
+                        <span style={{ fontWeight: "bold", color: "var(--text-bright)" }}>Isolated Files:</span> {blueprintInsights.isolatedCount}
                       </div>
                     )}
                     {!blueprintInsights.cyclesCount && !blueprintInsights.mostImported && !blueprintInsights.isolatedCount > 0 && (
@@ -3332,22 +3415,22 @@ const NewApp = () => {
                   {Object.entries(blueprintData.file_info).map(([path, info]) => {
                     const filename = path.split('/').pop() || path;
                     const isSelected = blueprintSelectedFile === path;
-                    const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                    const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: 'var(--border-muted)' };
                     return (
                       <div
                         key={path}
                         onClick={() => setBlueprintSelectedFile(path)}
                         style={{
                           padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                          background: isSelected ? "#2a2d2e" : "transparent",
+                          background: isSelected ? "var(--bg-hover)" : "transparent",
                           borderLeft: `2px solid ${isSelected ? "#7c4dff" : "transparent"}`,
                           display: "flex", alignItems: "center", gap: "6px",
-                          fontSize: "0.75rem", color: isSelected ? "#fff" : "#aaa",
+                          fontSize: "0.75rem", color: isSelected ? "var(--text-bright)" : "#aaa",
                         }}
                       >
                         <div style={{ width: 6, height: 6, borderRadius: "50%", background: langColors[info.language] || "#666", flexShrink: 0 }} />
                         <div style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</div>
-                        <span style={{ fontSize: "0.6rem", color: "#555" }}>{info.functions.length}f</span>
+                        <span style={{ fontSize: "0.6rem", color: "var(--border-muted)" }}>{info.functions.length}f</span>
                       </div>
                     );
                   })}
@@ -3355,7 +3438,7 @@ const NewApp = () => {
               )}
 
               {!blueprintData && !blueprintLoading && (
-                <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.78rem", fontStyle: "italic" }}>
+                <div style={{ padding: "20px", textAlign: "center", color: "var(--border-muted)", fontSize: "0.78rem", fontStyle: "italic" }}>
                   Upload a project ZIP to see its architecture.
                 </div>
               )}
@@ -3365,19 +3448,19 @@ const NewApp = () => {
           {/* VIEW E: CODE TEMPLATES */}
           {sidebarView === "templates" && (
             <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", color: "#ffb74d" }}>
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", gap: "8px", color: "#ffb74d" }}>
                 <BookOpen size={16} /> Code Templates
               </div>
-              <div style={{ padding: "8px 12px", borderBottom: "1px solid #333" }}>
+              <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border-main)" }}>
                 <input type="text" placeholder="Search templates..." value={templateSearch} onChange={(e) => setTemplateSearch(e.target.value)}
-                  style={{ width: "100%", padding: "6px 10px", background: "#1e1e1e", border: "1px solid #444", borderRadius: "4px", color: "#fff", fontSize: "0.75rem", outline: "none" }} />
+                  style={{ width: "100%", padding: "6px 10px", background: "var(--bg-main)", border: "1px solid var(--border-light)", borderRadius: "4px", color: "var(--text-bright)", fontSize: "0.75rem", outline: "none" }} />
               </div>
-              <div style={{ padding: "6px 12px", borderBottom: "1px solid #333", display: "flex", gap: "4px", flexWrap: "wrap" }}>
+              <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--border-main)", display: "flex", gap: "4px", flexWrap: "wrap" }}>
                 {["python", "java", "cpp", "javascript"].map(lang => (
                   <button key={lang} onClick={() => setTemplateLang(lang)} style={{
                     padding: "3px 8px", fontSize: "0.65rem", borderRadius: "10px", cursor: "pointer",
-                    background: templateLang === lang ? "#ff980030" : "#333",
-                    border: `1px solid ${templateLang === lang ? "#ff9800" : "#555"}`,
+                    background: templateLang === lang ? "#ff980030" : "var(--border-main)",
+                    border: `1px solid ${templateLang === lang ? "#ff9800" : "var(--border-muted)"}`,
                     color: templateLang === lang ? "#ffb74d" : "#999", fontWeight: templateLang === lang ? 700 : 400,
                   }}>
                     {lang === "cpp" ? "C++" : lang === "javascript" ? "JS" : lang.charAt(0).toUpperCase() + lang.slice(1)}
@@ -3392,7 +3475,7 @@ const NewApp = () => {
                   return (
                     <div key={cat}>
                       <div onClick={() => setExpandedCategories(prev => ({ ...prev, [cat]: !isExpanded }))}
-                        style={{ padding: "6px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "0.72rem", fontWeight: 700, color: "#ccc", background: "#2a2a2a", borderBottom: "1px solid #333" }}>
+                        style={{ padding: "6px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "0.72rem", fontWeight: 700, color: "var(--text-light)", background: "#2a2a2a", borderBottom: "1px solid var(--border-main)" }}>
                         <ChevronRight size={12} style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.15s" }} />
                         {cat} <span style={{ color: "#666", fontWeight: 400 }}>({filtered.length})</span>
                       </div>
@@ -3404,8 +3487,8 @@ const NewApp = () => {
                           setCurrentFunc(null);
                           setAnalysisResult(null);
                         }}
-                          style={{ padding: "8px 12px 8px 28px", cursor: "pointer", borderBottom: "1px solid #2a2a2a", transition: "background 0.15s", background: selectedTemplate?.id === t.id ? "#2a2d2e" : "transparent", borderLeft: selectedTemplate?.id === t.id ? "2px solid #ff9800" : "2px solid transparent" }}
-                          onMouseEnter={e => { if (selectedTemplate?.id !== t.id) e.currentTarget.style.background = "#2a2d2e"; }} onMouseLeave={e => { if (selectedTemplate?.id !== t.id) e.currentTarget.style.background = "transparent"; }}>
+                          style={{ padding: "8px 12px 8px 28px", cursor: "pointer", borderBottom: "1px solid #2a2a2a", transition: "background 0.15s", background: selectedTemplate?.id === t.id ? "var(--bg-hover)" : "transparent", borderLeft: selectedTemplate?.id === t.id ? "2px solid #ff9800" : "2px solid transparent" }}
+                          onMouseEnter={e => { if (selectedTemplate?.id !== t.id) e.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={e => { if (selectedTemplate?.id !== t.id) e.currentTarget.style.background = "transparent"; }}>
                           <div style={{ fontSize: "0.73rem", color: selectedTemplate?.id === t.id ? "#ffb74d" : "#e0e0e0", fontWeight: 500 }}>{t.name}</div>
                           <div style={{ fontSize: "0.62rem", color: "#777", marginTop: "2px" }}>{t.description}</div>
                         </div>
@@ -3414,8 +3497,8 @@ const NewApp = () => {
                   );
                 })}
               </div>
-              <div style={{ borderTop: "1px solid #444", padding: "10px 12px", background: "#1e1e1e" }}>
-                <div style={{ fontSize: "0.68rem", color: "#888", marginBottom: "6px" }}>Can't find what you need?</div>
+              <div style={{ borderTop: "1px solid var(--border-light)", padding: "10px 12px", background: "var(--bg-main)" }}>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginBottom: "6px" }}>Can't find what you need?</div>
                 <div style={{ display: "flex", gap: "6px" }}>
                   <input type="text" placeholder="e.g. Dijkstra's algorithm" value={aiTemplateQuery} onChange={(e) => setAiTemplateQuery(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && aiTemplateQuery.trim()) {
@@ -3426,7 +3509,7 @@ const NewApp = () => {
                           setSnippets(prev => [...prev, ns]); setActiveSnippetId(ns.id); setSidebarView("snippets"); setAiTemplateQuery('');
                         }).catch(err => alert("Failed: " + err.message)).finally(() => setAiTemplateLoading(false));
                     }}}
-                    style={{ flex: 1, padding: "6px 8px", background: "#252526", border: "1px solid #444", borderRadius: "4px", color: "#fff", fontSize: "0.7rem", outline: "none" }} />
+                    style={{ flex: 1, padding: "6px 8px", background: "var(--bg-sidebar)", border: "1px solid var(--border-light)", borderRadius: "4px", color: "var(--text-bright)", fontSize: "0.7rem", outline: "none" }} />
                   <button disabled={aiTemplateLoading || !aiTemplateQuery.trim()} onClick={() => {
                     if (!aiTemplateQuery.trim()) return;
                     setAiTemplateLoading(true);
@@ -3455,7 +3538,7 @@ const NewApp = () => {
         <div
           onMouseDown={startDrag('sidebar', sidebarWidth)}
           style={{
-            width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+            width: "4px", background: "linear-gradient(180deg, var(--border-main) 0%, var(--border-light) 50%, var(--border-main) 100%)",
             cursor: "col-resize", flexShrink: 0, position: "relative"
           }}
         >
@@ -3467,28 +3550,28 @@ const NewApp = () => {
       )}
 
       {/* 3. CENTER STAGE */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#1e1e1e" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--bg-main)" }}>
         {/* TOOLBAR */}
-        <div style={{ height: "40px", borderBottom: "1px solid #333", display: "flex", alignItems: "center", padding: "0 15px", justifyContent: "space-between", background: "#1e1e1e" }}>
+        <div style={{ height: "40px", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", padding: "0 15px", justifyContent: "space-between", background: "var(--bg-main)" }}>
 
           {/* Breadcrumbs */}
-          <div style={{ fontSize: "0.8rem", color: "#888", display: "flex", alignItems: "center" }}>
+          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
             {(() => {
               const crumbs = [];
               if (sidebarView === "explorer") {
-                crumbs.push({ label: "Local Repo", color: "#888", icon: <Folder size={14} />, onClick: () => { setSelectedFilePath(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
-                if (activeFileName) crumbs.push({ label: activeFileName, color: "#d4d4d4", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
+                crumbs.push({ label: "Local Repo", color: "var(--text-muted)", icon: <Folder size={14} />, onClick: () => { setSelectedFilePath(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                if (activeFileName) crumbs.push({ label: activeFileName, color: "var(--text-main)", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
               } else if (sidebarView === "github") {
-                crumbs.push({ label: githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : 'GitHub', color: "#888", icon: <Github size={14} />, onClick: () => { setGithubFlowchartFile(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                crumbs.push({ label: githubRepoInfo ? `${githubRepoInfo.owner}/${githubRepoInfo.repo}` : 'GitHub', color: "var(--text-muted)", icon: <Github size={14} />, onClick: () => { setGithubFlowchartFile(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
                 if (githubSelectedFile) crumbs.push({ label: githubSelectedFile.split('/').pop(), color: "#c9d1d9", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
               } else if (sidebarView === "blueprint") {
-                crumbs.push({ label: blueprintData ? (blueprintTree?.name || 'Project Blueprint') : 'Project Blueprint', color: "#888", icon: <Layers size={14} />, onClick: () => { setBlueprintFlowchartFile(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                crumbs.push({ label: blueprintData ? (blueprintTree?.name || 'Project Blueprint') : 'Project Blueprint', color: "var(--text-muted)", icon: <Layers size={14} />, onClick: () => { setBlueprintFlowchartFile(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
                 if (blueprintFlowchartFile) crumbs.push({ label: blueprintFlowchartFile, color: "#b388ff", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
               } else if (sidebarView === "templates") {
-                crumbs.push({ label: "Templates", color: "#888", icon: <BookOpen size={14} />, onClick: () => { setSelectedTemplate(null); setTemplateCode(""); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                crumbs.push({ label: "Templates", color: "var(--text-muted)", icon: <BookOpen size={14} />, onClick: () => { setSelectedTemplate(null); setTemplateCode(""); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
                 if (selectedTemplate) crumbs.push({ label: selectedTemplate.name, color: "#ffb74d", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
               } else {
-                crumbs.push({ label: "Snippets", color: "#888", icon: <Code size={14} />, onClick: () => { setActiveSnippetId(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
+                crumbs.push({ label: "Snippets", color: "var(--text-muted)", icon: <Code size={14} />, onClick: () => { setActiveSnippetId(null); setCurrentFunc(null); setAiExplanation(null); setAnalysisResult(null); } });
                 if (activeSnippet) crumbs.push({ label: activeSnippet.name, color: "#f89820", onClick: () => { setCurrentFunc(null); setAiExplanation(null); } });
               }
               if (currentFunc) {
@@ -3497,7 +3580,7 @@ const NewApp = () => {
 
               return crumbs.map((crumb, idx) => (
                 <React.Fragment key={idx}>
-                  {idx > 0 && <span style={{ margin: "0 8px", color: "#555" }}>/</span>}
+                  {idx > 0 && <span style={{ margin: "0 8px", color: "var(--border-muted)" }}>/</span>}
                   <div 
                     onClick={crumb.onClick}
                     style={{ 
@@ -3509,7 +3592,7 @@ const NewApp = () => {
                       borderRadius: "4px",
                       background: "transparent"
                     }}
-                    onMouseEnter={(e) => { if(crumb.onClick) { e.currentTarget.style.color = "#fff"; e.currentTarget.style.background = "#ffffff11"; } }}
+                    onMouseEnter={(e) => { if(crumb.onClick) { e.currentTarget.style.color = "var(--text-bright)"; e.currentTarget.style.background = "var(--text-bright)11"; } }}
                     onMouseLeave={(e) => { if(crumb.onClick) { e.currentTarget.style.color = crumb.color; e.currentTarget.style.background = "transparent"; } }}
                   >
                     {crumb.icon}
@@ -3537,7 +3620,7 @@ const NewApp = () => {
                 <option value="c">C</option>
               </select>
             ) : (
-              <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: "bold", background: "#252526", padding: "4px 8px", borderRadius: "3px" }}>
+              <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: "bold", background: "var(--bg-sidebar)", padding: "4px 8px", borderRadius: "3px" }}>
                 {(() => {
                   if (activeFileName.endsWith(".py")) return "PYTHON FILE";
                   if (activeFileName.endsWith(".java")) return "JAVA FILE";
@@ -3550,17 +3633,17 @@ const NewApp = () => {
               </div>
             )}
 
-            <div style={{ width: 1, height: 20, background: "#555" }} />
+            <div style={{ width: 1, height: 20, background: "var(--border-muted)" }} />
 
             {/* VIEW SWITCHER */}
             <div style={{ display: "flex", gap: "5px" }}>
-              <button onClick={() => setViewMode("code")} title="Code Only" style={{ ...iconBtnStyle, background: viewMode === "code" ? "#3e3e42" : "transparent" }}> <FileText size={14} /> </button>
-              <button onClick={() => setViewMode("split")} title="Split View" style={{ ...iconBtnStyle, background: viewMode === "split" ? "#3e3e42" : "transparent" }}> <Columns size={14} /> </button>
-              <button onClick={() => setViewMode("graph")} title="Graph Only" style={{ ...iconBtnStyle, background: viewMode === "graph" ? "#3e3e42" : "transparent" }}> <Layers size={14} /> </button>
+              <button onClick={() => setViewMode("code")} title="Code Only" style={{ ...iconBtnStyle, background: viewMode === "code" ? "var(--bg-active)" : "transparent" }}> <FileText size={14} /> </button>
+              <button onClick={() => setViewMode("split")} title="Split View" style={{ ...iconBtnStyle, background: viewMode === "split" ? "var(--bg-active)" : "transparent" }}> <Columns size={14} /> </button>
+              <button onClick={() => setViewMode("graph")} title="Graph Only" style={{ ...iconBtnStyle, background: viewMode === "graph" ? "var(--bg-active)" : "transparent" }}> <Layers size={14} /> </button>
               {(sidebarView === "explorer" || sidebarView === "github") && (
                 <>
-                  <div style={{ width: 1, height: 20, background: "#444", alignSelf: "center" }} />
-                  <button onClick={() => setViewMode("fileMap")} title="File Dependency Map" style={{ ...iconBtnStyle, background: viewMode === "fileMap" ? "#3e3e42" : "transparent", color: viewMode === "fileMap" ? "#4caf50" : "#ccc" }}> <GitBranch size={14} /> </button>
+                  <div style={{ width: 1, height: 20, background: "var(--border-light)", alignSelf: "center" }} />
+                  <button onClick={() => setViewMode("fileMap")} title="File Dependency Map" style={{ ...iconBtnStyle, background: viewMode === "fileMap" ? "var(--bg-active)" : "transparent", color: viewMode === "fileMap" ? "#4caf50" : "var(--text-light)" }}> <GitBranch size={14} /> </button>
                 </>
               )}
             </div>
@@ -3579,8 +3662,11 @@ const NewApp = () => {
             <button style={{ ...iconBtnStyle }} onClick={() => setViewMode(viewMode === "code" ? "split" : "code")} title="Toggle Code">
               {viewMode === "code" ? <Columns size={14} /> : <Maximize size={14} />}
             </button>
+            <button style={{ ...iconBtnStyle }} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Toggle Theme">
+              {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
             <button
-              style={{ ...iconBtnStyle, color: apiKeyStatus === 'ok' ? '#4caf50' : '#ccc' }}
+              style={{ ...iconBtnStyle, color: apiKeyStatus === 'ok' ? '#4caf50' : 'var(--text-light)' }}
               onClick={() => { setApiKeyInput(geminiApiKey); setShowApiKeyModal(true); }}
               title="API Settings"
             >
@@ -3596,9 +3682,9 @@ const NewApp = () => {
             position: "absolute", top: 12, right: 12, zIndex: 200,
             display: "flex", alignItems: "center", gap: "6px",
             background: "rgba(30,30,30,0.92)", backdropFilter: "blur(8px)",
-            border: `1px solid ${graphSearchQuery ? '#7c4dff' : '#444'}`,
+            border: `1px solid ${graphSearchQuery ? '#7c4dff' : 'var(--border-light)'}`,
             borderRadius: "8px", padding: "4px 10px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            boxShadow: "0 4px 12px rgba(var(--rgb-shadow-base),0.4)",
             transition: "border-color 0.2s, width 0.3s",
             width: graphSearchQuery ? "260px" : "180px",
           }}>
@@ -3608,6 +3694,7 @@ const NewApp = () => {
               placeholder="Search nodes…"
               value={graphSearchQuery}
               onChange={(e) => setGraphSearchQuery(e.target.value)}
+              ref={searchInputRef}
               style={{
                 background: "transparent", border: "none", outline: "none",
                 color: "#ddd", fontSize: "0.75rem", width: "100%",
@@ -3619,7 +3706,7 @@ const NewApp = () => {
                 onClick={() => setGraphSearchQuery('')}
                 style={{
                   background: "transparent", border: "none", cursor: "pointer",
-                  color: "#888", fontSize: "0.8rem", padding: 0, lineHeight: 1,
+                  color: "var(--text-muted)", fontSize: "0.8rem", padding: 0, lineHeight: 1,
                 }}
               >✕</button>
             )}
@@ -3632,11 +3719,11 @@ const NewApp = () => {
               position: "absolute", top: 46, right: 12, zIndex: 200,
               background: heatmapMode ? "rgba(124,77,255,0.25)" : "rgba(30,30,30,0.92)",
               backdropFilter: "blur(8px)",
-              border: `1px solid ${heatmapMode ? '#7c4dff' : '#444'}`,
+              border: `1px solid ${heatmapMode ? '#7c4dff' : 'var(--border-light)'}`,
               borderRadius: "8px", padding: "4px 10px",
               cursor: "pointer", display: "flex", alignItems: "center", gap: "5px",
-              color: heatmapMode ? "#bb86fc" : "#888", fontSize: "0.65rem",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+              color: heatmapMode ? "#bb86fc" : "var(--text-muted)", fontSize: "0.65rem",
+              boxShadow: "0 4px 12px rgba(var(--rgb-shadow-base),0.4)",
               transition: "all 0.2s",
             }}
           >
@@ -3644,7 +3731,7 @@ const NewApp = () => {
           </button>
           {/* FILE DEPENDENCY MAP - Explorer only */}
           {viewMode === "fileMap" && sidebarView === "explorer" && (
-            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "var(--bg-main)" }}>
               <FileDepGraph
                 dependencies={dependencies}
                 fileTree={fileTree}
@@ -3666,7 +3753,7 @@ const NewApp = () => {
 
           {/* FILE DEPENDENCY MAP - GitHub */}
           {viewMode === "fileMap" && sidebarView === "github" && (
-            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "var(--bg-main)" }}>
               <FileDepGraph
                 dependencies={githubDependencies}
                 fileTree={githubTree || { type: 'folder', name: 'root', children: {} }}
@@ -3695,7 +3782,7 @@ const NewApp = () => {
             <div
               onMouseDown={startDrag('codepane', codePaneWidth)}
               style={{
-                width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+                width: "4px", background: "linear-gradient(180deg, var(--border-main) 0%, var(--border-light) 50%, var(--border-main) 100%)",
                 cursor: "col-resize", flexShrink: 0, position: "relative"
               }}
             >
@@ -3707,7 +3794,7 @@ const NewApp = () => {
           )}
 
           {(viewMode === "graph" || viewMode === "split" || sidebarView === "blueprint" || (sidebarView === "github" && githubBlueprintData)) && (
-            <div style={{ flex: 1, position: "relative", height: "100%", background: "#1e1e1e" }}>
+            <div style={{ flex: 1, position: "relative", height: "100%", background: "var(--bg-main)" }}>
               {loading || blueprintLoading || githubBlueprintLoading ? (
                 <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : githubBlueprintLoading ? "Analyzing GitHub repository..." : "Analyzing..."}</div>
               ) : sidebarView === "blueprint" && !blueprintFlowchartFile && blueprintData?.dep_graph ? (
@@ -3882,7 +3969,7 @@ const NewApp = () => {
         <div
           onMouseDown={startDrag('rightpanel', rightPanelWidth)}
           style={{
-            width: "4px", background: "linear-gradient(180deg, #333 0%, #444 50%, #333 100%)",
+            width: "4px", background: "linear-gradient(180deg, var(--border-main) 0%, var(--border-light) 50%, var(--border-main) 100%)",
             cursor: "col-resize", flexShrink: 0, position: "relative"
           }}
         >
@@ -3898,12 +3985,12 @@ const NewApp = () => {
         <div
           onClick={() => setRightPanelCollapsed(false)}
           style={{
-            width: "32px", background: "#252526", display: "flex", flexDirection: "column",
+            width: "32px", background: "var(--bg-sidebar)", display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
-            borderLeft: "1px solid #333", gap: "8px", transition: "background 0.15s"
+            borderLeft: "1px solid var(--border-main)", gap: "8px", transition: "background 0.15s"
           }}
-          onMouseEnter={e => e.currentTarget.style.background = '#2a2d2e'}
-          onMouseLeave={e => e.currentTarget.style.background = '#252526'}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-sidebar)'}
           title="Expand Inspector"
         >
           <ChevronRight size={14} color="#777" style={{ transform: 'rotate(180deg)' }} />
@@ -3914,8 +4001,8 @@ const NewApp = () => {
           }}>Inspector</span>
         </div>
       ) : (
-        <div style={{ width: `${rightPanelWidth}px`, background: "#252526", borderLeft: "none", display: "flex", flexDirection: "column", overflowY: "auto", flexShrink: 0 }}>
-          <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid #333", display: "flex", alignItems: "center", gap: "8px", justifyContent: "space-between" }}>
+        <div style={{ width: `${rightPanelWidth}px`, background: "var(--bg-sidebar)", borderLeft: "none", display: "flex", flexDirection: "column", overflowY: "auto", flexShrink: 0 }}>
+          <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", gap: "8px", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <Search size={14} color="#4caf50" /> Inspector
             </div>
@@ -3930,21 +4017,21 @@ const NewApp = () => {
           {sidebarView === 'blueprint' ? (
             blueprintSelectedFile && blueprintData?.file_info?.[blueprintSelectedFile] ? (
               <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "12px", flex: 1, minHeight: 0, overflow: "hidden" }}>
-                <div style={{ fontSize: "0.85rem", color: "#d4d4d4", fontWeight: "bold", wordBreak: "break-all" }}>
+                <div style={{ fontSize: "0.85rem", color: "var(--text-main)", fontWeight: "bold", wordBreak: "break-all" }}>
                   <FileCode size={14} color="#b388ff" style={{ verticalAlign: 'middle', marginRight: '6px' }} />
                   {blueprintSelectedFile.split('/').pop()}
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #ff9800" }}>
-                    <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imports (Out)</div>
-                    <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
+                  <div style={{ background: "var(--bg-main)", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #ff9800" }}>
+                    <div style={{ fontSize: "0.6rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Imports (Out)</div>
+                    <div style={{ fontSize: "0.9rem", color: "var(--text-light)", fontWeight: "bold" }}>
                       {blueprintData.dep_graph?.edges?.filter(e => e.source === blueprintSelectedFile).length || 0}
                     </div>
                   </div>
-                  <div style={{ background: "#1e1e1e", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #00bcd4" }}>
-                    <div style={{ fontSize: "0.6rem", color: "#888", textTransform: "uppercase" }}>Imported By (In)</div>
-                    <div style={{ fontSize: "0.9rem", color: "#ccc", fontWeight: "bold" }}>
+                  <div style={{ background: "var(--bg-main)", borderRadius: "6px", padding: "8px", borderLeft: "3px solid #00bcd4" }}>
+                    <div style={{ fontSize: "0.6rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Imported By (In)</div>
+                    <div style={{ fontSize: "0.9rem", color: "var(--text-light)", fontWeight: "bold" }}>
                       {blueprintData.dep_graph?.edges?.filter(e => e.target === blueprintSelectedFile).length || 0}
                     </div>
                   </div>
@@ -3953,16 +4040,16 @@ const NewApp = () => {
                 <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
                   <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "6px" }}>Code Preview ({blueprintData.file_info[blueprintSelectedFile].functions.length} functions)</div>
                   <pre style={{
-                    margin: 0, padding: "10px", background: "#1e1e1e", borderRadius: "6px",
-                    color: "#d4d4d4", fontSize: "0.75rem", overflowY: "auto", flex: 1,
-                    border: "1px solid #333", whiteSpace: "pre-wrap"
+                    margin: 0, padding: "10px", background: "var(--bg-main)", borderRadius: "6px",
+                    color: "var(--text-main)", fontSize: "0.75rem", overflowY: "auto", flex: 1,
+                    border: "1px solid var(--border-main)", whiteSpace: "pre-wrap"
                   }}>
                     {getFileContent(blueprintTree, blueprintSelectedFile) || "No code available."}
                   </pre>
                 </div>
               </div>
             ) : (
-              <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+              <div style={{ padding: "20px", textAlign: "center", color: "var(--border-muted)", fontSize: "0.8rem", fontStyle: "italic" }}>
                 Select a file in the blueprint file tree to view its metrics and code.
               </div>
             )
@@ -3980,13 +4067,13 @@ const NewApp = () => {
                 .map(([filePath, info]) => {
                   const filename = filePath.split('/').pop() || filePath;
                   const folderPath = filePath.split('/').slice(0, -1).join('/');
-                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: '#555555' };
+                  const langColors = { python: '#3572A5', java: '#b07219', javascript: '#f1e05a', typescript: '#3178c6', cpp: '#f34b7d', c: 'var(--border-muted)' };
                   const langColor = langColors[info.language] || '#666';
                   const maxCx = info.complexity ? Math.max(...Object.values(info.complexity), 0) : 0;
                   const fileBadgeColor = maxCx <= 5 ? "#4caf50" : maxCx <= 10 ? "#ff9800" : "#f44336";
 
                   return (
-                    <div key={filePath} style={{ marginBottom: "8px", background: "#1e1e1e", borderRadius: "6px", border: "1px solid #333", overflow: "hidden" }}>
+                    <div key={filePath} style={{ marginBottom: "8px", background: "var(--bg-main)", borderRadius: "6px", border: "1px solid var(--border-main)", overflow: "hidden" }}>
                       {/* File Header */}
                       <div style={{
                         padding: "6px 8px", display: "flex", alignItems: "center", gap: "6px",
@@ -3998,7 +4085,7 @@ const NewApp = () => {
                             {filename}
                           </div>
                           {folderPath && (
-                            <div style={{ fontSize: "0.6rem", color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <div style={{ fontSize: "0.6rem", color: "var(--border-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {folderPath}
                             </div>
                           )}
@@ -4044,16 +4131,16 @@ const NewApp = () => {
                 })}
             </div>
           ) : !analysisResult ? (
-            <div style={{ padding: "20px", textAlign: "center", color: "#555", fontSize: "0.8rem", fontStyle: "italic" }}>
+            <div style={{ padding: "20px", textAlign: "center", color: "var(--border-muted)", fontSize: "0.8rem", fontStyle: "italic" }}>
               Analyze code to see insights here.
             </div>
           ) : (
             <>
               {/* Function List */}
-              <div style={{ padding: "10px 12px", borderBottom: "1px solid #333" }}>
+              <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-main)" }}>
                 <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Functions</div>
                 {(analysisResult?.functions?.names || []).length === 0 ? (
-                  <div style={{ fontSize: "0.75rem", color: "#555", fontStyle: "italic" }}>No functions detected</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--border-muted)", fontStyle: "italic" }}>No functions detected</div>
                 ) : (
                   analysisResult.functions.names.map(fname => {
                     const cx = analysisResult.complexity?.[fname] || 0;
@@ -4066,12 +4153,12 @@ const NewApp = () => {
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                          background: isActive ? "#2a2d2e" : "transparent",
+                          background: isActive ? "var(--bg-hover)" : "transparent",
                           borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
-                          fontSize: "0.8rem", color: isActive ? "#fff" : "#bbb",
+                          fontSize: "0.8rem", color: isActive ? "var(--text-bright)" : "#bbb",
                           transition: "background 0.15s"
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "#2a2d2e"}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
                         onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
@@ -4092,7 +4179,7 @@ const NewApp = () => {
 
               {/* Complexity Gauge */}
               {currentFunc && analysisResult?.complexity?.[currentFunc] != null && (
-                <div style={{ padding: "12px", borderBottom: "1px solid #333" }}>
+                <div style={{ padding: "12px", borderBottom: "1px solid var(--border-main)" }}>
                   <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Complexity</div>
                   {(() => {
                     const cx = analysisResult.complexity[currentFunc];
@@ -4102,10 +4189,10 @@ const NewApp = () => {
                     return (
                       <div>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                          <span style={{ fontSize: "0.75rem", color: "#ccc" }}>{currentFunc}()</span>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-light)" }}>{currentFunc}()</span>
                           <span style={{ fontSize: "0.75rem", color: barColor, fontWeight: "bold" }}>{cx} — {label}</span>
                         </div>
-                        <div style={{ background: "#1e1e1e", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
+                        <div style={{ background: "var(--bg-main)", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
                           <div style={{
                             width: `${pct}%`, height: "100%", borderRadius: "4px",
                             background: `linear-gradient(90deg, #4caf50, ${barColor})`,
@@ -4121,15 +4208,15 @@ const NewApp = () => {
 
               {/* AI Explain Button */}
               {analysisResult && (
-                <div style={{ padding: '10px 12px', borderBottom: '1px solid #333' }}>
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-main)' }}>
                   <button
                     onClick={handleExplain}
                     disabled={aiLoading}
                     style={{
                       width: '100%', padding: '8px 12px',
-                      background: aiLoading ? '#333' : 'linear-gradient(135deg, #7c4dff, #448aff)',
+                      background: aiLoading ? 'var(--border-main)' : 'linear-gradient(135deg, #7c4dff, #448aff)',
                       border: 'none', borderRadius: '6px', cursor: aiLoading ? 'wait' : 'pointer',
-                      color: '#fff', fontSize: '0.78rem', fontWeight: 600,
+                      color: 'var(--text-bright)', fontSize: '0.78rem', fontWeight: 600,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                       transition: 'all 0.2s', boxShadow: aiLoading ? 'none' : '0 2px 8px rgba(124, 77, 255, 0.3)',
                     }}
@@ -4142,7 +4229,7 @@ const NewApp = () => {
 
               {/* AI Explanation */}
               {aiExplanation && (
-                <div style={{ padding: '12px', borderBottom: '1px solid #333' }}>
+                <div style={{ padding: '12px', borderBottom: '1px solid var(--border-main)' }}>
                   <div style={{ fontSize: '0.7rem', color: '#7c4dff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Zap size={12} /> AI Explanation
                   </div>
@@ -4158,9 +4245,9 @@ const NewApp = () => {
                       <>
                         {/* Overview */}
                         <div style={{
-                          background: 'linear-gradient(135deg, #1a1a2e 0%, #1e1e1e 100%)',
+                          background: 'linear-gradient(135deg, #1a1a2e 0%, var(--bg-main) 100%)',
                           borderRadius: '8px', padding: '10px 12px', marginBottom: '8px',
-                          fontSize: '0.76rem', color: '#d4d4d4', lineHeight: '1.5',
+                          fontSize: '0.76rem', color: 'var(--text-main)', lineHeight: '1.5',
                           borderLeft: '3px solid #7c4dff',
                           fontFamily: 'system-ui, sans-serif',
                         }}>
@@ -4170,7 +4257,7 @@ const NewApp = () => {
                         {/* Algorithm Steps */}
                         {algorithm && (
                           <div style={{
-                            background: '#1a1a1a', borderRadius: '8px', padding: '10px 12px',
+                            background: 'var(--bg-dark)', borderRadius: '8px', padding: '10px 12px',
                             fontSize: '0.72rem', lineHeight: '1.6', fontFamily: 'system-ui, sans-serif',
                           }}>
                             <div style={{ color: '#7c4dff', fontSize: '0.65rem', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>
@@ -4207,8 +4294,8 @@ const NewApp = () => {
                 <div style={{ padding: "12px" }}>
                   <div style={{ fontSize: "0.7rem", color: "#666", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Insights</div>
                   <div style={{
-                    background: "#1e1e1e", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px",
-                    fontSize: "0.78rem", color: "#ccc", lineHeight: "1.5",
+                    background: "var(--bg-main)", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px",
+                    fontSize: "0.78rem", color: "var(--text-light)", lineHeight: "1.5",
                     borderLeft: "3px solid #4caf50"
                   }}>
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
@@ -4236,7 +4323,7 @@ const NewApp = () => {
                     return (
                       <div key={i} style={{
                         display: "flex", alignItems: "flex-start", gap: "8px",
-                        background: "#1e1e1e", borderRadius: "6px", padding: "8px 10px", marginBottom: "6px",
+                        background: "var(--bg-main)", borderRadius: "6px", padding: "8px 10px", marginBottom: "6px",
                         borderLeft: `3px solid ${borderColor}`, fontSize: "0.75rem", color: "#aaa", lineHeight: "1.4"
                       }}>
                         <div style={{ flexShrink: 0, marginTop: "1px" }}>{icon}</div>
@@ -4255,16 +4342,16 @@ const NewApp = () => {
       {showApiKeyModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          background: 'rgba(var(--rgb-shadow-base),0.6)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 9999,
         }} onClick={() => setShowApiKeyModal(false)}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: '#252526', border: '1px solid #444', borderRadius: '12px',
+            background: 'var(--bg-sidebar)', border: '1px solid var(--border-light)', borderRadius: '12px',
             padding: '24px', width: '460px', maxWidth: '90vw',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: '0 8px 32px rgba(var(--rgb-shadow-base),0.5)',
           }}>
-            <h3 style={{ margin: '0 0 16px', color: '#fff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h3 style={{ margin: '0 0 16px', color: 'var(--text-bright)', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Settings size={18} color="#7c4dff" /> API Settings
             </h3>
 
@@ -4272,9 +4359,9 @@ const NewApp = () => {
             <div style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                 <Zap size={14} color="#7c4dff" />
-                <span style={{ fontSize: '0.8rem', color: '#ccc', fontWeight: 600 }}>Gemini AI Key</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-light)', fontWeight: 600 }}>Gemini AI Key</span>
               </div>
-              <p style={{ color: '#888', fontSize: '0.7rem', margin: '0 0 8px' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: '0 0 8px' }}>
                 For AI-powered explanations. Get one free at{' '}
                 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c4dff' }}>aistudio.google.com</a>
               </p>
@@ -4285,8 +4372,8 @@ const NewApp = () => {
                 onKeyDown={e => e.key === 'Enter' && handleSaveApiKey()}
                 placeholder="AIza..."
                 style={{
-                  width: '100%', padding: '8px 12px', background: '#1e1e1e', border: '1px solid #444',
-                  borderRadius: '6px', color: '#d4d4d4', fontSize: '0.8rem', fontFamily: 'monospace',
+                  width: '100%', padding: '8px 12px', background: 'var(--bg-main)', border: '1px solid var(--border-light)',
+                  borderRadius: '6px', color: 'var(--text-main)', fontSize: '0.8rem', fontFamily: 'monospace',
                   outline: 'none', boxSizing: 'border-box',
                 }}
               />
@@ -4296,13 +4383,13 @@ const NewApp = () => {
             </div>
 
             {/* Divider */}
-            <div style={{ height: '1px', background: '#444', margin: '0 0 20px' }} />
+            <div style={{ height: '1px', background: 'var(--border-light)', margin: '0 0 20px' }} />
 
             {/* GitHub Token Section */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <Github size={14} color="#fff" />
-                <span style={{ fontSize: '0.8rem', color: '#ccc', fontWeight: 600 }}>GitHub Token</span>
+                <Github size={14} color="var(--text-bright)" />
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-light)', fontWeight: 600 }}>GitHub Token</span>
                 {githubRateInfo && (
                   <span style={{
                     marginLeft: 'auto', fontSize: '0.65rem', padding: '2px 8px',
@@ -4314,7 +4401,7 @@ const NewApp = () => {
                   </span>
                 )}
               </div>
-              <p style={{ color: '#888', fontSize: '0.7rem', margin: '0 0 8px' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: '0 0 8px' }}>
                 Optional. Without a token: 60 req/hr. With a token: 5,000 req/hr.{' '}
                 <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" style={{ color: '#238636' }}>Generate token</a>
               </p>
@@ -4327,8 +4414,8 @@ const NewApp = () => {
                 }}
                 placeholder="ghp_... (no special scopes needed for public repos)"
                 style={{
-                  width: '100%', padding: '8px 12px', background: '#1e1e1e', border: '1px solid #444',
-                  borderRadius: '6px', color: '#d4d4d4', fontSize: '0.8rem', fontFamily: 'monospace',
+                  width: '100%', padding: '8px 12px', background: 'var(--bg-main)', border: '1px solid var(--border-light)',
+                  borderRadius: '6px', color: 'var(--text-main)', fontSize: '0.8rem', fontFamily: 'monospace',
                   outline: 'none', boxSizing: 'border-box',
                 }}
               />
@@ -4343,12 +4430,12 @@ const NewApp = () => {
             {/* Actions */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowApiKeyModal(false)} style={{
-                padding: '8px 16px', background: 'transparent', border: '1px solid #555',
-                borderRadius: '6px', color: '#888', cursor: 'pointer', fontSize: '0.8rem',
+                padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-muted)',
+                borderRadius: '6px', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem',
               }}>Close</button>
               <button onClick={handleSaveApiKey} style={{
                 padding: '8px 20px', background: 'linear-gradient(135deg, #7c4dff, #448aff)',
-                border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer',
+                border: 'none', borderRadius: '6px', color: 'var(--text-bright)', cursor: 'pointer',
                 fontSize: '0.8rem', fontWeight: 600,
               }}>Save</button>
             </div>
@@ -4360,7 +4447,7 @@ const NewApp = () => {
       {showGithubPopup && githubQuickStats && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          background: 'rgba(var(--rgb-shadow-base),0.6)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
         }}
           onClick={() => setShowGithubPopup(false)}
@@ -4368,20 +4455,20 @@ const NewApp = () => {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#252526', borderRadius: '16px', padding: '28px 32px',
-              border: '1px solid #444', width: '520px', maxWidth: '90vw',
+              background: 'var(--bg-sidebar)', borderRadius: '16px', padding: '28px 32px',
+              border: '1px solid var(--border-light)', width: '520px', maxWidth: '90vw',
               maxHeight: '85vh', overflowY: 'auto',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+              boxShadow: '0 20px 60px rgba(var(--rgb-shadow-base),0.5)',
             }}
           >
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-              <Github size={22} color="#fff" />
+              <Github size={22} color="var(--text-bright)" />
               <div>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-bright)' }}>
                   {githubQuickStats.owner}/{githubQuickStats.repo}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: '#888', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                   <GitBranch size={10} /> {githubQuickStats.branch}
                 </div>
               </div>
@@ -4389,38 +4476,38 @@ const NewApp = () => {
 
             {/* Quick Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px' }}>
-              <div style={{ background: '#1e1e1e', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-main)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
                 <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#4caf50' }}>{githubQuickStats.totalFiles}</div>
-                <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '2px' }}>Total Files</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Total Files</div>
               </div>
-              <div style={{ background: '#1e1e1e', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-main)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
                 <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#ff9800' }}>{githubQuickStats.codeFiles}</div>
-                <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '2px' }}>Code Files</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Code Files</div>
               </div>
-              <div style={{ background: '#1e1e1e', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-main)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
                 <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#00bcd4' }}>
                   {githubQuickStats.totalSize > 1048576 ? `${(githubQuickStats.totalSize / 1048576).toFixed(1)}MB` : githubQuickStats.totalSize > 1024 ? `${(githubQuickStats.totalSize / 1024).toFixed(0)}KB` : `${githubQuickStats.totalSize}B`}
                 </div>
-                <div style={{ fontSize: '0.65rem', color: '#888', marginTop: '2px' }}>Est. Size</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Est. Size</div>
               </div>
             </div>
 
             {/* Language Breakdown */}
             {Object.keys(githubQuickStats.langBreakdown).length > 0 && (
               <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Languages</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Languages</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {Object.entries(githubQuickStats.langBreakdown)
                     .sort(([, a], [, b]) => b - a)
                     .map(([lang, count]) => {
-                      const langColors = { Python: '#3572A5', Java: '#b07219', JavaScript: '#f1e05a', TypeScript: '#3178c6', 'C++': '#f34b7d', C: '#555555', 'C/C++': '#555555', 'C#': '#178600', Go: '#00ADD8', Rust: '#dea584', Ruby: '#701516' };
+                      const langColors = { Python: '#3572A5', Java: '#b07219', JavaScript: '#f1e05a', TypeScript: '#3178c6', 'C++': '#f34b7d', C: 'var(--border-muted)', 'C/C++': 'var(--border-muted)', 'C#': '#178600', Go: '#00ADD8', Rust: '#dea584', Ruby: '#701516' };
                       return (
                         <div key={lang} style={{
                           display: 'flex', alignItems: 'center', gap: '6px',
-                          background: '#1e1e1e', padding: '4px 10px', borderRadius: '12px',
-                          fontSize: '0.72rem', color: '#ccc',
+                          background: 'var(--bg-main)', padding: '4px 10px', borderRadius: '12px',
+                          fontSize: '0.72rem', color: 'var(--text-light)',
                         }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: langColors[lang] || '#888' }} />
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: langColors[lang] || 'var(--text-muted)' }} />
                           {lang} <span style={{ color: '#666' }}>({count})</span>
                         </div>
                       );
@@ -4432,13 +4519,13 @@ const NewApp = () => {
             {/* README Preview */}
             {githubReadmeHtml && (
               <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>README</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>README</div>
                 <div
                   style={{
-                    background: '#1e1e1e', borderRadius: '10px', padding: '16px',
+                    background: 'var(--bg-main)', borderRadius: '10px', padding: '16px',
                     maxHeight: '250px', overflowY: 'auto',
-                    fontSize: '0.78rem', color: '#ccc', lineHeight: '1.6',
-                    border: '1px solid #333',
+                    fontSize: '0.78rem', color: 'var(--text-light)', lineHeight: '1.6',
+                    border: '1px solid var(--border-main)',
                   }}
                   dangerouslySetInnerHTML={{ __html: githubReadmeHtml }}
                   className="github-readme-preview"
@@ -4451,8 +4538,8 @@ const NewApp = () => {
               <button
                 onClick={() => setShowGithubPopup(false)}
                 style={{
-                  flex: 1, padding: '10px', background: 'transparent', border: '1px solid #555',
-                  borderRadius: '8px', color: '#888', cursor: 'pointer', fontSize: '0.8rem',
+                  flex: 1, padding: '10px', background: 'transparent', border: '1px solid var(--border-muted)',
+                  borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem',
                 }}
               >
                 Browse Only
@@ -4462,7 +4549,7 @@ const NewApp = () => {
                 style={{
                   flex: 2, padding: '10px',
                   background: 'linear-gradient(135deg, #238636, #2ea043)',
-                  border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer',
+                  border: 'none', borderRadius: '8px', color: 'var(--text-bright)', cursor: 'pointer',
                   fontSize: '0.85rem', fontWeight: 600,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 }}
@@ -4483,20 +4570,20 @@ const FileItem = ({ name, active, onClick, onDelete }) => (
     onClick={onClick}
     style={{
       padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between",
-      gap: "6px", cursor: "pointer", color: active ? "white" : "#888",
-      background: active ? "#3e3e42" : "transparent", fontSize: "0.9rem", borderRadius: "3px", marginBottom: "2px"
+      gap: "6px", cursor: "pointer", color: active ? "white" : "var(--text-muted)",
+      background: active ? "var(--bg-active)" : "transparent", fontSize: "0.9rem", borderRadius: "3px", marginBottom: "2px"
     }}>
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-      <FileText size={14} color={active ? "#4caf50" : "#888"} /> {name}
+      <FileText size={14} color={active ? "#4caf50" : "var(--text-muted)"} /> {name}
     </div>
-    {onDelete && <Trash2 size={12} color={active ? "#ff5252" : "#555"} onClick={onDelete} />}
+    {onDelete && <Trash2 size={12} color={active ? "#ff5252" : "var(--border-muted)"} onClick={onDelete} />}
   </div>
 );
-const iconBtnStyle = { background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: "5px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "3px" };
+const iconBtnStyle = { background: "transparent", border: "none", color: "var(--text-light)", cursor: "pointer", padding: "5px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "3px" };
 const runBtnStyle = { background: "#2da042", border: "none", color: "white", padding: "5px 12px", borderRadius: "3px", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" };
 const actionBtnStyle = { width: "100%", padding: "8px", border: "none", color: "white", background: "#4caf50", cursor: "pointer", borderRadius: "3px", fontWeight: "bold", fontSize: "0.8rem" };
-const editorStyle = { width: "100%", height: "100%", background: "#1e1e1e", color: "#d4d4d4", border: "none", padding: "20px", fontFamily: "monospace", fontSize: "14px", resize: "none", outline: "none" };
-const centerMsgStyle = { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", color: "#555", textAlign: "center" };
-const dropdownStyle = { background: "#252526", color: "#d4d4d4", border: "1px solid #333", padding: "4px 8px", borderRadius: "4px", fontSize: "0.8rem", outline: "none", cursor: "pointer" };
+const editorStyle = { width: "100%", height: "100%", background: "var(--bg-main)", color: "var(--text-main)", border: "none", padding: "20px", fontFamily: "monospace", fontSize: "14px", resize: "none", outline: "none" };
+const centerMsgStyle = { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", color: "var(--border-muted)", textAlign: "center" };
+const dropdownStyle = { background: "var(--bg-sidebar)", color: "var(--text-main)", border: "1px solid var(--border-main)", padding: "4px 8px", borderRadius: "4px", fontSize: "0.8rem", outline: "none", cursor: "pointer" };
 
 export default NewApp;
