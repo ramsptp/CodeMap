@@ -18,7 +18,8 @@ import {
   Columns, ClipboardList, Plus, ArrowLeft,
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
   Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
-  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard, BookOpen, Sun, Moon
+  AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard, BookOpen, Sun, Moon,
+  RotateCcw, RotateCw, HelpCircle, Network
 } from "lucide-react";
 import './theme.css';
 import templates, { TEMPLATE_CATEGORIES } from './templates';
@@ -786,7 +787,7 @@ const FuncDepNode = ({ data }) => {
   );
 };
 
-const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, onNodeDoubleClick, searchQuery = '', heatmapMode = false }) => {
+const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memoryKey, onNodeDoubleClick, searchQuery = '', heatmapMode = false, pathSelectMode = false, pathNodeA = null, pathNodeB = null, onPathNodeSelect = null }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [tooltip, setTooltip] = useState(null);
@@ -938,6 +939,11 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
   }, [depData, computeLayout, styleEdges, setNodes, setEdges, setGraphMemory, memoryKey]);
 
   const handleNodeClick = useCallback((event, node) => {
+    // Path selection mode: intercept click for call-path feature
+    if (pathSelectMode && onPathNodeSelect) {
+      onPathNodeSelect(node.id);
+      return;
+    }
     // Save positions before drilling in
     if (setGraphMemory && memoryKey) {
       setGraphMemory(prev => ({
@@ -948,7 +954,7 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
     if (onFuncClick) {
       onFuncClick(node.id);
     }
-  }, [onFuncClick, setGraphMemory, memoryKey, nodes, edges]);
+  }, [onFuncClick, setGraphMemory, memoryKey, nodes, edges, pathSelectMode, onPathNodeSelect]);
 
   const handleNodeMouseEnter = useCallback((event, node) => {
     setTooltip({ x: event.clientX, y: event.clientY, data: node.data });
@@ -962,8 +968,23 @@ const FuncDepGraph = ({ depData, onFuncClick, graphMemory, setGraphMemory, memor
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       {nodes.length > 0 ? (
         <>
+          {pathSelectMode && (
+            <div style={{
+              position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 300,
+              background: '#7c4dff33', border: '1px solid #7c4dff', borderRadius: '8px',
+              padding: '4px 14px', fontSize: '0.7rem', color: '#b388ff', pointerEvents: 'none'
+            }}>
+              {!pathNodeA ? 'Click start function (A)' : `A: ${pathNodeA}() → click end function (B)`}
+            </div>
+          )}
           <ReactFlow
-            nodes={nodes}
+            nodes={nodes.map(n => ({
+              ...n,
+              style: {
+                ...n.style,
+                outline: pathNodeA === n.id ? '2px solid #7c4dff' : pathNodeB === n.id ? '2px solid #e91e63' : undefined,
+              }
+            }))}
             edges={edges}
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
@@ -1430,6 +1451,136 @@ const FileDepNode = ({ data }) => {
 
 const fileDepGraphNodeTypes = {
   fileNode: FileDepNode
+};
+
+// ============================================================
+// CROSS-FILE FUNCTION GRAPH (Phase 5C)
+// Shows functions grouped by file with cross-file call edges
+// ============================================================
+const CrossFileFlowGraph = ({ analysisResultsMap, crossFileData, onFuncClick }) => {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  useEffect(() => {
+    if (!crossFileData?.calls || !analysisResultsMap) return;
+
+    const builtNodes = [];
+    const builtEdges = [];
+    const fileList = Object.keys(analysisResultsMap);
+    const FILE_W = 220;
+    const FUNC_H = 40;
+    const PADDING = 50;
+
+    fileList.forEach((filePath, fileIdx) => {
+      const result = analysisResultsMap[filePath];
+      if (!result) return;
+      const funcs = result.functions?.names || [];
+      const fileName = filePath.split('/').pop() || filePath;
+      const groupH = PADDING * 2 + funcs.length * (FUNC_H + 10);
+      const groupX = fileIdx * (FILE_W + 80);
+
+      // Group (file container) node
+      builtNodes.push({
+        id: `file:${filePath}`,
+        type: 'group',
+        position: { x: groupX, y: 0 },
+        style: {
+          width: FILE_W, height: groupH,
+          border: '1px solid #444', borderRadius: '10px',
+          background: 'rgba(30,30,40,0.6)', padding: '0',
+        },
+        data: { label: fileName },
+      });
+
+      // Label for file group
+      builtNodes.push({
+        id: `filelabel:${filePath}`,
+        type: 'default',
+        parentId: `file:${filePath}`,
+        extent: 'parent',
+        position: { x: 10, y: 8 },
+        style: {
+          background: 'transparent', border: 'none', boxShadow: 'none',
+          fontSize: '0.65rem', color: '#888', fontWeight: 700, pointerEvents: 'none',
+          width: FILE_W - 20,
+        },
+        data: { label: fileName },
+      });
+
+      // Function nodes inside group
+      funcs.forEach((funcName, funcIdx) => {
+        const cx = result.complexity?.[funcName] || 0;
+        const color = cx > 10 ? '#f44336' : cx > 5 ? '#ff9800' : '#4caf50';
+        builtNodes.push({
+          id: `func:${filePath}:${funcName}`,
+          parentId: `file:${filePath}`,
+          extent: 'parent',
+          position: { x: 15, y: PADDING + funcIdx * (FUNC_H + 10) },
+          style: {
+            width: FILE_W - 30, height: FUNC_H,
+            border: `1px solid ${color}44`, borderRadius: '6px',
+            background: `${color}11`, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', cursor: 'pointer', fontSize: '0.72rem',
+            color: '#ddd', fontFamily: 'monospace',
+          },
+          data: { label: `${funcName}()` },
+        });
+      });
+    });
+
+    // Cross-file edges
+    if (crossFileData.calls) {
+      let edgeIdx = 0;
+      Object.entries(crossFileData.calls).forEach(([srcFile, calls]) => {
+        Object.entries(calls).forEach(([funcName, tgtFile]) => {
+          const srcId = `func:${srcFile}:${funcName}`;
+          const tgtId = `file:${tgtFile}`;
+          if (builtNodes.find(n => n.id === srcId) && builtNodes.find(n => n.id === tgtId)) {
+            builtEdges.push({
+              id: `xedge-${edgeIdx++}`,
+              source: srcId,
+              target: tgtId,
+              type: 'default',
+              animated: false,
+              style: { stroke: '#7c4dff88', strokeDasharray: '5 3', strokeWidth: 1.5 },
+              markerEnd: { type: 'arrowclosed', color: '#7c4dff88' },
+            });
+          }
+        });
+      });
+    }
+
+    setNodes(builtNodes);
+    setEdges(builtEdges);
+  }, [analysisResultsMap, crossFileData, setNodes, setEdges]);
+
+  if (!crossFileData?.calls || Object.keys(analysisResultsMap || {}).length === 0) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '0.8rem', flexDirection: 'column', gap: '8px' }}>
+        <p>Load a multi-file project and analyze it to see cross-file function dependencies.</p>
+      </div>
+    );
+  }
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onNodeClick={(_, node) => {
+        if (node.id.startsWith('func:') && onFuncClick) {
+          const parts = node.id.split(':');
+          onFuncClick(parts[parts.length - 1]);
+        }
+      }}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+    >
+      <Background color="var(--bg-main)" gap={20} size={1} />
+      <Controls />
+    </ReactFlow>
+  );
 };
 
 const FileDepGraph = ({ dependencies, fileTree, selectedFile, onFileSelect, graphMemory, setGraphMemory, crossFileData, onNodeDoubleClick, searchQuery = '' }) => {
@@ -2271,6 +2422,28 @@ const NewApp = () => {
   const [graphSearchQuery, setGraphSearchQuery] = useState('');
   const [heatmapMode, setHeatmapMode] = useState(false);
 
+  // 5. EDITOR UNDO/REDO STATE
+  const [editorHistory, setEditorHistory] = useState(['']);
+  const [editorHistoryIdx, setEditorHistoryIdx] = useState(0);
+  const historyTimer = useRef(null);
+
+  // 6. QUIZ MODE STATE
+  const [quizQuestion, setQuizQuestion] = useState(null);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizAnswered, setQuizAnswered] = useState(null);
+  const [quizTargetFunc, setQuizTargetFunc] = useState('');
+  const [quizScore, setQuizScore] = useState({ correct: 0, total: 0 });
+
+  // 7. CALL PATH STATE (Phase 5D)
+  const [pathSelectMode, setPathSelectMode] = useState(false);
+  const [pathNodeA, setPathNodeA] = useState(null);
+  const [pathNodeB, setPathNodeB] = useState(null);
+  const [callPathResult, setCallPathResult] = useState(null);
+  const [callPathLoading, setCallPathLoading] = useState(false);
+
+  // 8. CROSS-FILE GRAPH STATE (Phase 5C)
+  const [showCrossFileGraph, setShowCrossFileGraph] = useState(false);
+
   // AI Explanation state
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('codemap_gemini_key') || '');
   const [aiExplanationsMap, setAiExplanationsMap] = useState({});
@@ -2420,6 +2593,9 @@ const NewApp = () => {
     setSelectedFilePath(path);
     setCurrentFunc(null);
     setAiExplanation(null);
+    // Reset undo/redo history for the new file
+    setEditorHistory([content || '']);
+    setEditorHistoryIdx(0);
     // Restore cached analysis if available
     setAnalysisResult(prev => {
       const cached = analysisCache[path];
@@ -2736,6 +2912,119 @@ const NewApp = () => {
           return updated;
         });
       }
+    }
+
+    // Push to undo/redo history (debounced)
+    clearTimeout(historyTimer.current);
+    historyTimer.current = setTimeout(() => {
+      setEditorHistory(prev => {
+        const trimmed = prev.slice(0, editorHistoryIdx + 1);
+        const next = [...trimmed, newContent].slice(-50);
+        setEditorHistoryIdx(next.length - 1);
+        return next;
+      });
+    }, 500);
+  };
+
+  const handleUndo = () => {
+    if (editorHistoryIdx <= 0) return;
+    const newIdx = editorHistoryIdx - 1;
+    const content = editorHistory[newIdx];
+    setEditorHistoryIdx(newIdx);
+    if (sidebarView === "explorer") {
+      setFileTree(prev => setFileContent(prev, selectedFilePath, content));
+    } else if (activeSnippetId) {
+      setSnippets(prev => prev.map(s => s.id === activeSnippetId ? { ...s, content } : s));
+    }
+  };
+
+  const handleRedo = () => {
+    if (editorHistoryIdx >= editorHistory.length - 1) return;
+    const newIdx = editorHistoryIdx + 1;
+    const content = editorHistory[newIdx];
+    setEditorHistoryIdx(newIdx);
+    if (sidebarView === "explorer") {
+      setFileTree(prev => setFileContent(prev, selectedFilePath, content));
+    } else if (activeSnippetId) {
+      setSnippets(prev => prev.map(s => s.id === activeSnippetId ? { ...s, content } : s));
+    }
+  };
+
+  // --- QUIZ HANDLERS ---
+  const handleGenerateQuiz = async () => {
+    if (!analysisResult || !geminiApiKey) return;
+    setQuizLoading(true);
+    setQuizQuestion(null);
+    setQuizAnswered(null);
+    try {
+      const funcName = quizTargetFunc || (analysisResult.functions?.names?.[0] || '');
+      const code = analysisResult?.code_snippets?.[funcName] || currentFileContent;
+      const lang = analysisResult?.language || 'python';
+      const res = await axios.post('http://127.0.0.1:8000/quiz', { code, language: lang, function_name: funcName });
+      setQuizQuestion(res.data);
+    } catch (err) {
+      alert('Quiz generation failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const handleQuizAnswer = (i) => {
+    if (quizAnswered !== null) return;
+    setQuizAnswered(i);
+    setQuizScore(prev => ({
+      correct: prev.correct + (i === quizQuestion.correct ? 1 : 0),
+      total: prev.total + 1,
+    }));
+  };
+
+  // --- CALL PATH HANDLERS (Phase 5D) ---
+  const findPath = (edges, start, end) => {
+    const adj = {};
+    edges.forEach(e => { adj[e.source] = [...(adj[e.source] || []), e.target]; });
+    const queue = [[start]];
+    const visited = new Set([start]);
+    while (queue.length) {
+      const path = queue.shift();
+      const node = path[path.length - 1];
+      if (node === end) return path;
+      for (const nb of (adj[node] || [])) {
+        if (!visited.has(nb)) { visited.add(nb); queue.push([...path, nb]); }
+      }
+    }
+    return null;
+  };
+
+  const handlePathNodeSelect = async (nodeId) => {
+    if (!pathNodeA) {
+      setPathNodeA(nodeId);
+      return;
+    }
+    if (nodeId === pathNodeA) return; // same node, ignore
+    setPathNodeB(nodeId);
+    setPathSelectMode(false);
+    // Run BFS
+    const edges = analysisResult?.func_dep_graph?.edges || [];
+    const path = findPath(edges, pathNodeA, nodeId);
+    if (!path) {
+      setCallPathResult({ path: [pathNodeA, nodeId], explanation: `No direct call path found from ${pathNodeA}() to ${nodeId}().` });
+      return;
+    }
+    setCallPathLoading(true);
+    setCallPathResult(null);
+    try {
+      const snippets = {};
+      path.forEach(fn => { snippets[fn] = analysisResult?.code_snippets?.[fn] || ''; });
+      const res = await axios.post('http://127.0.0.1:8000/explain-path', {
+        path,
+        snippets,
+        language: analysisResult?.language || 'python',
+      });
+      setCallPathResult(res.data);
+    } catch (err) {
+      setCallPathResult({ path, explanation: 'Could not fetch explanation: ' + err.message });
+    } finally {
+      setCallPathLoading(false);
     }
   };
 
@@ -3216,6 +3505,14 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
         </div>
 
         <div
+          onClick={() => { setSidebarView("quiz"); setSidebarCollapsed(false); }}
+          style={{ cursor: "pointer", borderLeft: sidebarView === "quiz" ? "2px solid #e91e63" : "2px solid transparent", width: "100%", display: "flex", justifyContent: "center", padding: "5px 0" }}
+          title="Quiz Mode"
+        >
+          <HelpCircle size={24} color={sidebarView === "quiz" ? "#f48fb1" : "#777"} />
+        </div>
+
+        <div
           onClick={() => setSidebarCollapsed(c => !c)}
           style={{ cursor: "pointer", marginTop: "auto", width: "100%", display: "flex", justifyContent: "center", padding: "8px 0", transition: "transform 0.2s" }}
           title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
@@ -3553,8 +3850,25 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
           {/* VIEW D: PROJECT BLUEPRINT */}
           {sidebarView === "blueprint" && (
             <>
-              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
-                <LayoutDashboard size={14} color="#7c4dff" /> Project Blueprint
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#b388ff" }}>
+                  <LayoutDashboard size={14} color="#7c4dff" /> Project Blueprint
+                </div>
+                {crossFileData?.calls && (
+                  <button
+                    onClick={() => setShowCrossFileGraph(v => !v)}
+                    title={showCrossFileGraph ? "Show file dependency graph" : "Show cross-file function graph"}
+                    style={{
+                      padding: "3px 8px", fontSize: "0.65rem", borderRadius: "4px", cursor: "pointer",
+                      background: showCrossFileGraph ? "#7c4dff33" : "var(--bg-main)",
+                      border: `1px solid ${showCrossFileGraph ? "#7c4dff" : "var(--border-muted)"}`,
+                      color: showCrossFileGraph ? "#b388ff" : "#666", whiteSpace: "nowrap",
+                    }}
+                  >
+                    <Network size={10} style={{ marginRight: 3 }} />
+                    Cross-File
+                  </button>
+                )}
               </div>
 
               {/* Upload Area */}
@@ -3802,6 +4116,107 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
               </div>
             </div>
           )}
+
+          {/* VIEW F: QUIZ MODE */}
+          {sidebarView === "quiz" && (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+              {/* Header */}
+              <div style={{ padding: "12px 15px", fontSize: "0.8rem", fontWeight: "bold", textTransform: "uppercase", borderBottom: "1px solid var(--border-main)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f48fb1" }}>
+                  <HelpCircle size={16} color="#e91e63" /> Quiz Mode
+                </div>
+                <div style={{ fontSize: "0.68rem", color: quizScore.total > 0 ? (quizScore.correct / quizScore.total >= 0.7 ? "#4caf50" : "#ff9800") : "#555", fontWeight: 700 }}>
+                  {quizScore.correct}/{quizScore.total}
+                </div>
+              </div>
+
+              {/* No analysis notice */}
+              {!analysisResult ? (
+                <div style={{ padding: "20px 15px", fontSize: "0.75rem", color: "#666", textAlign: "center", lineHeight: 1.6 }}>
+                  Analyze a file first, then come back to quiz yourself on the code.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", padding: "12px 15px", gap: "8px", borderBottom: "1px solid var(--border-main)" }}>
+                  <div style={{ fontSize: "0.68rem", color: "#888", textTransform: "uppercase", letterSpacing: "0.05em" }}>Function to quiz on</div>
+                  <select
+                    value={quizTargetFunc || (analysisResult.functions?.names?.[0] || '')}
+                    onChange={e => setQuizTargetFunc(e.target.value)}
+                    style={{ padding: "5px 8px", background: "var(--bg-main)", border: "1px solid var(--border-light)", borderRadius: "4px", color: "var(--text-bright)", fontSize: "0.75rem", outline: "none" }}
+                  >
+                    {(analysisResult.functions?.names || []).map(f => (
+                      <option key={f} value={f}>{f}()</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleGenerateQuiz}
+                    disabled={quizLoading || !geminiApiKey}
+                    style={{
+                      padding: "7px 12px", borderRadius: "5px", cursor: quizLoading || !geminiApiKey ? "not-allowed" : "pointer",
+                      background: "#e91e6322", border: "1px solid #e91e6355", color: "#f48fb1",
+                      fontSize: "0.75rem", fontWeight: 600, opacity: quizLoading || !geminiApiKey ? 0.5 : 1,
+                      transition: "all 0.15s"
+                    }}
+                  >
+                    {quizLoading ? "Generating…" : !geminiApiKey ? "Set API key first" : "Generate Question"}
+                  </button>
+                </div>
+              )}
+
+              {/* Quiz card */}
+              {quizQuestion && !quizLoading && (
+                <div style={{ flex: 1, overflowY: "auto", padding: "12px 15px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ fontSize: "0.78rem", color: "#e0e0e0", lineHeight: 1.6, background: "var(--bg-main)", padding: "10px 12px", borderRadius: "6px", borderLeft: "3px solid #e91e63" }}>
+                    {quizQuestion.question}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {(quizQuestion.options || []).map((opt, i) => {
+                      const isSelected = quizAnswered === i;
+                      const isCorrect = i === quizQuestion.correct;
+                      const showResult = quizAnswered !== null;
+                      let borderColor = "var(--border-light)";
+                      let bg = "var(--bg-main)";
+                      if (showResult && isCorrect) { borderColor = "#4caf50"; bg = "#4caf5015"; }
+                      else if (showResult && isSelected) { borderColor = "#f44336"; bg = "#f4433615"; }
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => handleQuizAnswer(i)}
+                          style={{
+                            padding: "8px 12px", borderRadius: "6px", cursor: quizAnswered !== null ? "default" : "pointer",
+                            border: `1px solid ${borderColor}`, background: bg,
+                            fontSize: "0.75rem", color: showResult && isCorrect ? "#81c784" : showResult && isSelected ? "#e57373" : "#ccc",
+                            transition: "all 0.2s", display: "flex", alignItems: "center", gap: "8px"
+                          }}
+                          onMouseEnter={e => { if (quizAnswered === null) e.currentTarget.style.background = "var(--bg-hover)"; }}
+                          onMouseLeave={e => { if (quizAnswered === null) e.currentTarget.style.background = "var(--bg-main)"; }}
+                        >
+                          <span style={{ fontSize: "0.65rem", color: "#666", flexShrink: 0 }}>{['A','B','C','D'][i]}.</span>
+                          {opt}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {quizAnswered !== null && (
+                    <div style={{
+                      padding: "10px 12px", background: "var(--bg-main)", borderRadius: "6px",
+                      borderLeft: `3px solid ${quizAnswered === quizQuestion.correct ? '#4caf50' : '#f44336'}`,
+                      fontSize: "0.73rem", color: "#bbb", lineHeight: 1.6
+                    }}>
+                      {quizQuestion.explanation}
+                    </div>
+                  )}
+                  {quizAnswered !== null && (
+                    <button
+                      onClick={() => { setQuizQuestion(null); setQuizAnswered(null); }}
+                      style={{ padding: "6px", borderRadius: "4px", background: "#e91e6322", border: "1px solid #e91e6355", color: "#f48fb1", fontSize: "0.72rem", cursor: "pointer" }}
+                    >
+                      Next Question →
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -3919,6 +4334,30 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                 </>
               )}
             </div>
+
+            {/* UNDO / REDO */}
+            {(sidebarView === "explorer" || sidebarView === "snippets") && (
+              <>
+                <button onClick={handleUndo} disabled={editorHistoryIdx <= 0}
+                  style={{ ...iconBtnStyle, opacity: editorHistoryIdx <= 0 ? 0.3 : 1 }} title="Undo (Ctrl+Z)">
+                  <RotateCcw size={13} />
+                </button>
+                <button onClick={handleRedo} disabled={editorHistoryIdx >= editorHistory.length - 1}
+                  style={{ ...iconBtnStyle, opacity: editorHistoryIdx >= editorHistory.length - 1 ? 0.3 : 1 }} title="Redo (Ctrl+Y)">
+                  <RotateCw size={13} />
+                </button>
+              </>
+            )}
+
+            {/* PATH SELECT TOGGLE (only when func dep graph is available) */}
+            {analysisResult?.func_dep_graph && (
+              <button
+                onClick={() => { setPathSelectMode(m => !m); setPathNodeA(null); setPathNodeB(null); setCallPathResult(null); }}
+                style={{ ...iconBtnStyle, color: pathSelectMode ? '#7c4dff' : 'var(--text-light)', background: pathSelectMode ? '#7c4dff22' : 'transparent' }}
+                title={pathSelectMode ? `Select start node… ${pathNodeA ? `(${pathNodeA} → ?)` : ''}` : "Explain Call Path — click two nodes"}>
+                <Network size={14} />
+              </button>
+            )}
 
             <button style={runBtnStyle} onClick={() => { if (sidebarView === 'github' && githubBlueprintData && githubSelectedFile) { setGithubFlowchartFile(githubSelectedFile); } handleAnalyze(null); }}>
               <Play size={14} fill="white" />
@@ -4064,6 +4503,11 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                 value={sidebarView === "explorer" ? currentFileContent : sidebarView === "github" ? githubFileContent : sidebarView === "templates" ? templateCode : (activeSnippet ? activeSnippet.content : '')}
                 onChange={sidebarView === "github" || sidebarView === "templates" ? undefined : handleCodeChange}
                 readOnly={sidebarView === "github" || sidebarView === "templates"}
+                onKeyDown={(e) => {
+                  if (sidebarView === "github" || sidebarView === "templates") return;
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+                  else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); handleRedo(); }
+                }}
                 style={{ ...editorStyle, ...(sidebarView === "github" || sidebarView === "templates" ? { opacity: 0.85 } : {}) }} spellCheck="false"
               />
             </div>
@@ -4089,6 +4533,12 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
             <div style={{ flex: 1, position: "relative", height: "100%", background: "var(--bg-main)" }}>
               {loading || blueprintLoading || githubBlueprintLoading ? (
                 <div style={centerMsgStyle}>{blueprintLoading ? "Analyzing project..." : githubBlueprintLoading ? "Analyzing GitHub repository..." : "Analyzing..."}</div>
+              ) : sidebarView === "blueprint" && showCrossFileGraph ? (
+                <CrossFileFlowGraph
+                  analysisResultsMap={Object.fromEntries(Object.entries(analysisCache).map(([k, v]) => [k, v.result]))}
+                  crossFileData={crossFileData}
+                  onFuncClick={(funcName) => handleAnalyze(funcName)}
+                />
               ) : sidebarView === "blueprint" && !blueprintFlowchartFile && blueprintData?.dep_graph ? (
                 <>
                   <FuncDepGraph
@@ -4231,6 +4681,10 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                   memoryKey={`${sidebarView === 'explorer' ? selectedFilePath : 'snippet'}:funcDep`}
                   searchQuery={graphSearchQuery}
                   heatmapMode={heatmapMode}
+                  pathSelectMode={pathSelectMode}
+                  pathNodeA={pathNodeA}
+                  pathNodeB={pathNodeB}
+                  onPathNodeSelect={handlePathNodeSelect}
                 />
               ) : analysisResult && analysisResult.graph_data ? (
                 <FlowGraph
@@ -4682,6 +5136,38 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                       </a>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* CALL PATH RESULT (Phase 5D) */}
+              {(callPathResult || callPathLoading) && (
+                <div style={{ padding: "12px", borderTop: "1px solid var(--border-main)" }}>
+                  <div style={{ fontSize: "0.7rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Network size={12} color="#7c4dff" /> Call Path
+                  </div>
+                  {callPathLoading ? (
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>Explaining call chain…</div>
+                  ) : callPathResult ? (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", marginBottom: "8px" }}>
+                        {callPathResult.path?.map((fn, i) => (
+                          <React.Fragment key={fn}>
+                            {i > 0 && <span style={{ color: "#555", fontSize: "0.65rem" }}>→</span>}
+                            <span style={{ fontSize: "0.7rem", color: "#b388ff", background: "#7c4dff22", padding: "2px 6px", borderRadius: "4px", fontFamily: "monospace" }}>
+                              {fn}()
+                            </span>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: "0.73rem", color: "#bbb", lineHeight: 1.6, background: "var(--bg-main)", padding: "8px 10px", borderRadius: "5px", borderLeft: "3px solid #7c4dff" }}>
+                        {callPathResult.explanation}
+                      </div>
+                      <button onClick={() => { setCallPathResult(null); setPathNodeA(null); setPathNodeB(null); }}
+                        style={{ marginTop: "6px", padding: "3px 8px", fontSize: "0.65rem", color: "#666", background: "transparent", border: "1px solid var(--border-muted)", borderRadius: "3px", cursor: "pointer" }}>
+                        Clear
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               )}
             </>

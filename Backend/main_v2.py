@@ -1853,3 +1853,75 @@ async def git_blame(request: GitBlameRequest):
     except Exception as e:
         logger.error(f"git blame failed: {e}")
         return {"error": str(e)}
+
+
+# ==========================================
+# /quiz  — generate a multiple-choice question about a function
+# ==========================================
+class QuizRequest(BaseModel):
+    code: str
+    language: str = "python"
+    function_name: Optional[str] = None
+
+@app.post("/quiz")
+async def generate_quiz(request: QuizRequest):
+    if not _gemini_api_key or not _gemini_model:
+        return {"error": "Gemini API key not set. Use /set-api-key first."}
+    lang = request.language
+    func_label = f"function `{request.function_name}`" if request.function_name else "the code"
+    prompt = (
+        f"You are a coding tutor. Given this {lang} {func_label}, generate a multiple-choice quiz question "
+        f"that tests understanding of its logic or behaviour (not syntax trivia).\n\n"
+        f"Code:\n```{lang}\n{request.code}\n```\n\n"
+        f"Return ONLY valid JSON — no markdown fences, no explanation outside the JSON:\n"
+        f'{{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "correct": 0, "explanation": "..."}}\n'
+        f"`correct` is the 0-based index of the correct option."
+    )
+    try:
+        import json as _json
+        response = _gemini_model.generate_content(prompt)
+        text = response.text.strip()
+        # Strip any accidental markdown fences
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        text = text.strip()
+        data = _json.loads(text)
+        return data
+    except Exception as e:
+        logger.error(f"Quiz generation failed: {e}")
+        return {"error": str(e)}
+
+
+# ==========================================
+# /explain-path  — explain a call chain using Gemini
+# ==========================================
+class ExplainPathRequest(BaseModel):
+    path: list
+    snippets: dict = {}
+    language: str = "python"
+
+@app.post("/explain-path")
+async def explain_call_path(request: ExplainPathRequest):
+    if not _gemini_api_key or not _gemini_model:
+        return {"error": "Gemini API key not set. Use /set-api-key first."}
+    path_str = " → ".join(f"{fn}()" for fn in request.path)
+    snippets_text = ""
+    for fn in request.path:
+        code = request.snippets.get(fn, "")
+        if code:
+            snippets_text += f"\n### {fn}()\n```{request.language}\n{code}\n```\n"
+    prompt = (
+        f"You are a code explainer. Explain this function call chain in plain English:\n\n"
+        f"**{path_str}**\n"
+        f"{snippets_text}\n"
+        f"In 3-5 sentences, explain what data or control flows through this chain from start to end. "
+        f"Be concise and student-friendly."
+    )
+    try:
+        response = _gemini_model.generate_content(prompt)
+        return {"path": request.path, "explanation": response.text.strip()}
+    except Exception as e:
+        logger.error(f"explain-path failed: {e}")
+        return {"path": request.path, "explanation": f"Error: {str(e)}"}
