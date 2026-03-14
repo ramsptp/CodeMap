@@ -1290,24 +1290,10 @@ async def analyze_code(request: CodeRequest):
                     if call in all_func_names and call != caller:
                         dep_edges.append({"source": caller, "target": call})
             
-            # Compute in-degree for dead code detection
-            in_degree = {fname: 0 for fname in func_bodies.keys()}
-            for edge in dep_edges:
-                if edge["target"] in in_degree:
-                    in_degree[edge["target"]] += 1
-
-            # Common entry points — never flagged as dead
-            ENTRY_POINTS = {
-                'main', '__init__', 'setUp', 'tearDown', 'run', 'start',
-                'execute', 'app', 'index', '__main__', 'init', 'setup',
-                'handle', 'handler', 'test', 'render',
-            }
-
             # Build graph data for the frontend
             dep_nodes = []
             for i, fname in enumerate(func_bodies.keys()):
                 cx = result["complexity"].get(fname, 0)
-                is_dead = in_degree.get(fname, 0) == 0 and fname.lower() not in ENTRY_POINTS
                 dep_nodes.append({
                     "id": fname,
                     "data": {
@@ -1316,7 +1302,6 @@ async def analyze_code(request: CodeRequest):
                         "language": lang,
                         "lineCount": result.get("line_counts", {}).get(fname, 0),
                         "snippet": result.get("code_snippets", {}).get(fname, ""),
-                        "isDead": is_dead,
                     },
                     "type": "funcDep",
                 })

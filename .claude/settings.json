@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/abhir/.claude/projects/c--Users-abhir-OneDrive-Documents-VSCode-CodeMap/memory/**)"
+    ]
+  }
+}
