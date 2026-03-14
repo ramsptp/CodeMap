@@ -2,7 +2,7 @@
 > codemap-frontend@0.1.0 build
 > react-scripts build
 
-(node:23084) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+(node:28596) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
 (Use `node --trace-deprecation ...` to show where the warning was created)
 Creating an optimized production build...
 Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
@@ -15,8 +15,6 @@ Failed to compile.
 
 [eslint] 
 src\App_v2.js
-  Line 3637:28:  'toggleTheme' is not defined  no-undef
-
-Search for the keywords to learn more about each error.
+Syntax error: Identifier 'DEFAULT_FILE_TREE' has already been declared. (234:6) (234:6)
 
 

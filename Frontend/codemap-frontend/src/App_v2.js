@@ -693,6 +693,7 @@ const getLayoutedElements = (nodes, edges) => {
 const FuncDepNode = ({ data }) => {
   const cx = data.maxComplexity || data.complexity || 0;
   const isCyclic = !!data.is_cyclic;
+  const isDead = !!data.isDead;
   const lang = data.language || 'python';
   const stats = data.stats;
 
@@ -745,6 +746,16 @@ const FuncDepNode = ({ data }) => {
           zIndex: 10
         }} title="Circular Dependency Detected">
           ⚠️
+        </div>
+      )}
+      {isDead && (
+        <div style={{
+          position: 'absolute', top: -10, left: -10, background: '#555', color: '#ff9800',
+          borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', fontSize: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+          zIndex: 10
+        }} title="Unused — 0 incoming calls">
+          ✕
         </div>
       )}
 
@@ -1780,12 +1791,27 @@ const NewApp = () => {
     localStorage.setItem('codemap-theme', theme);
   }, [theme]);
 
-  // UI State
-  const [sidebarView, setSidebarView] = useState("explorer");
+  // ========================================================
+  // PHASE 4B — PERSISTENT SESSIONS
+  // ========================================================
+  const SESSION_KEY = 'codemap-session-v1';
+
+  const loadSession = () => {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch { return null; }
+  };
+
+  const savedSession = loadSession();
+
+  // UI State — restore from session if available
+  const [sidebarView, setSidebarView] = useState(savedSession?.sidebarView || "explorer");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState("split");
-  const [currentFuncsMap, setCurrentFuncsMap] = useState({});
+  const [currentFuncsMap, setCurrentFuncsMap] = useState(savedSession?.currentFuncsMap || {});
   const currentFunc = currentFuncsMap[sidebarView] || null;
   const setCurrentFunc = useCallback((val) => {
     setCurrentFuncsMap(prev => ({ ...prev, [sidebarView]: typeof val === 'function' ? val(prev[sidebarView]) : val }));
@@ -1850,7 +1876,7 @@ const NewApp = () => {
   };
   // 1. FILE SYSTEM STATE (Explorer) - Now using tree structure
   const [fileTree, setFileTree] = useState(DEFAULT_FILE_TREE);
-  const [selectedFilePath, setSelectedFilePath] = useState("src/main.py"); // Full path like 'src/main.py'
+  const [selectedFilePath, setSelectedFilePath] = useState(savedSession?.selectedFilePath || "src/main.py");
 
   // 2. SNIPPET STATE (Universal Snippet Library)
   const [snippets, setSnippets] = useState(loadSnippets);
@@ -1886,6 +1912,61 @@ const NewApp = () => {
   }, [sidebarView]);
   const [loading, setLoading] = useState(false);
   const [analysisCache, setAnalysisCache] = useState({}); // filePath -> { result, func }
+  const [sessionSavedAt, setSessionSavedAt] = useState(null); // timestamp of last save
+
+  // Auto-save session whenever key state changes
+  useEffect(() => {
+    const session = {
+      sidebarView,
+      selectedFilePath,
+      currentFuncsMap,
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      setSessionSavedAt(new Date().toLocaleTimeString());
+    } catch { /* storage full — ignore */ }
+  }, [sidebarView, selectedFilePath, currentFuncsMap]);
+
+  // Export session as JSON file (for sharing / backup)
+  const handleExportSession = () => {
+    const session = {
+      sidebarView,
+      selectedFilePath,
+      currentFuncsMap,
+      analysisResultsMap,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `codemap-session-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Import session from JSON file
+  const handleImportSession = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const session = JSON.parse(ev.target.result);
+        if (session.sidebarView) setSidebarView(session.sidebarView);
+        if (session.selectedFilePath) setSelectedFilePath(session.selectedFilePath);
+        if (session.currentFuncsMap) setCurrentFuncsMap(session.currentFuncsMap);
+        if (session.analysisResultsMap) setAnalysisResultsMap(session.analysisResultsMap);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        setSessionSavedAt('Imported');
+      } catch {
+        alert('Invalid session file.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // reset input
+  };
 
   // Project Blueprint state
   const [blueprintTree, setBlueprintTree] = useState(null);
@@ -1964,6 +2045,10 @@ const NewApp = () => {
   const [showGithubPopup, setShowGithubPopup] = useState(false);
   const [githubQuickStats, setGithubQuickStats] = useState(null);
   const [githubFilesHeight, setGithubFilesHeight] = useState(200);
+
+  // Git Blame state (local files)
+  const [localGitBlame, setLocalGitBlame] = useState(null); // { summary: { top_authors, total_lines } }
+  const [gitBlameLoading, setGitBlameLoading] = useState(false);
 
   // Drag handler for Analyzed Files section height (direction: 1 for bottom border, -1 for top border)
   const startGithubFilesDrag = useCallback((e, direction) => {
@@ -2830,6 +2915,15 @@ const NewApp = () => {
         }));
       }
 
+      // Fetch git blame for local files (explorer / blueprint) — non-blocking
+      if (sidebarView === 'explorer' && selectedFilePath) {
+        fetchLocalGitBlame(selectedFilePath);
+      } else if (sidebarView === 'blueprint' && (blueprintFlowchartFile || blueprintSelectedFile)) {
+        fetchLocalGitBlame(blueprintFlowchartFile || blueprintSelectedFile);
+      } else {
+        setLocalGitBlame(null);
+      }
+
     } catch (error) {
       console.error("Analysis failed:", error);
       alert("Backend error. Is Port 8000 running?");
@@ -2874,6 +2968,27 @@ const NewApp = () => {
     };
   }, [blueprintData]);
 
+  // Git Blame fetch (local files — only works when backend has access to a real git repo)
+  const fetchLocalGitBlame = useCallback(async (filePath) => {
+    if (!filePath) return;
+    setGitBlameLoading(true);
+    try {
+      const resp = await axios.post("http://127.0.0.1:8000/git-blame", {
+        file_path: filePath,
+        repo_path: ".",
+      });
+      if (resp.data.summary && !resp.data.error) {
+        setLocalGitBlame(resp.data.summary);
+      } else {
+        setLocalGitBlame(null);
+      }
+    } catch {
+      setLocalGitBlame(null);
+    } finally {
+      setGitBlameLoading(false);
+    }
+  }, []);
+
   // Export Graph JSON
   const handleExportGraph = () => {
     if (!analysisResult || !analysisResult.graph_data) return;
@@ -2890,6 +3005,183 @@ const NewApp = () => {
   const handleDownloadImage = () => {
     if (graphRef.current) {
       graphRef.current.exportImage(currentFunc);
+    }
+  };
+
+  // Phase 4A — Export analysis as Markdown report
+  const handleExportMarkdown = () => {
+    if (!analysisResult) return;
+
+    const fileName = sidebarView === 'explorer' ? (selectedFilePath?.split('/').pop() || 'unknown')
+      : sidebarView === 'github' ? (githubSelectedFile?.split('/').pop() || 'unknown')
+      : sidebarView === 'blueprint' ? ((blueprintFlowchartFile || blueprintSelectedFile)?.split('/').pop() || 'unknown')
+      : 'snippet';
+
+    const now = new Date().toISOString().slice(0, 10);
+    const funcs = analysisResult.functions?.names || [];
+    const complexity = analysisResult.complexity || {};
+    const lineCounts = analysisResult.line_counts || {};
+
+    const deadFuncs = funcs.filter(f => {
+      const node = analysisResult.func_dep_graph?.nodes?.find(n => n.id === f);
+      return node?.data?.isDead;
+    });
+
+    const rows = funcs.map(f => {
+      const cx = complexity[f] || 0;
+      const lines = lineCounts[f] || '–';
+      const dead = deadFuncs.includes(f) ? '⚠️ Unused' : cx > 10 ? '🔴 Complex' : cx > 5 ? '🟡 Moderate' : '✅ Clean';
+      const cxLabel = cx <= 5 ? cx : cx <= 10 ? cx : cx;
+      return `| \`${f}()\` | ${lines} | ${cxLabel} | ${dead} |`;
+    }).join('\n');
+
+    const suggestions = (analysisResult.insights?.suggestions || [])
+      .map(s => `- **${s.type === 'warning' ? '⚠️' : s.type === 'success' ? '✅' : 'ℹ️'}** ${s.text}`)
+      .join('\n');
+
+    const gitSection = localGitBlame
+      ? `\n## Git Insights\n\n| Author | Lines |\n|--------|-------|\n${(localGitBlame.top_authors || []).map(a => `| ${a.author} | ${a.lines} |`).join('\n')}\n`
+      : '';
+
+    const md = `# CodeMap Analysis Report
+
+**File:** \`${fileName}\`
+**Date:** ${now}
+**Functions:** ${funcs.length}${deadFuncs.length > 0 ? `  |  **Unused:** ${deadFuncs.length}` : ''}
+
+---
+
+## Functions
+
+| Function | Lines | Complexity | Status |
+|----------|-------|------------|--------|
+${rows}
+
+## Insights
+
+${analysisResult.insights?.summary || '_No insights available._'}
+
+## Suggestions
+
+${suggestions || '_No suggestions._'}
+${gitSection}
+---
+_Generated by [CodeMap](https://github.com/yourusername/codemap)_
+`;
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `codemap-report-${fileName.replace(/\.[^.]+$/, '')}-${now}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Phase 4A — Export analysis as PDF report
+  const handleExportPDF = async () => {
+    if (!analysisResult) return;
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+      const fileName = sidebarView === 'explorer' ? (selectedFilePath?.split('/').pop() || 'unknown')
+        : sidebarView === 'github' ? (githubSelectedFile?.split('/').pop() || 'unknown')
+        : 'snippet';
+      const now = new Date().toISOString().slice(0, 10);
+      const funcs = analysisResult.functions?.names || [];
+      const complexity = analysisResult.complexity || {};
+      const lineCounts = analysisResult.line_counts || {};
+
+      // Title
+      doc.setFontSize(18);
+      doc.setTextColor(76, 175, 80);
+      doc.text('CodeMap Analysis Report', 15, 20);
+
+      doc.setFontSize(10);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`File: ${fileName}   |   Date: ${now}   |   Functions: ${funcs.length}`, 15, 28);
+
+      // Divider
+      doc.setDrawColor(50, 50, 50);
+      doc.line(15, 32, 195, 32);
+
+      let y = 40;
+
+      // Functions table header
+      doc.setFontSize(12);
+      doc.setTextColor(200, 200, 200);
+      doc.text('Functions', 15, y);
+      y += 6;
+
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Function', 15, y);
+      doc.text('Lines', 90, y);
+      doc.text('Complexity', 120, y);
+      doc.text('Status', 160, y);
+      y += 4;
+      doc.line(15, y, 195, y);
+      y += 5;
+
+      funcs.forEach(f => {
+        const cx = complexity[f] || 0;
+        const lines = lineCounts[f] || '–';
+        const depNode = analysisResult.func_dep_graph?.nodes?.find(n => n.id === f);
+        const isDead = depNode?.data?.isDead;
+        const status = isDead ? 'Unused' : cx > 10 ? 'Complex' : cx > 5 ? 'Moderate' : 'Clean';
+        const statusColor = isDead ? [255, 152, 0] : cx > 10 ? [244, 67, 54] : cx > 5 ? [255, 152, 0] : [76, 175, 80];
+
+        doc.setTextColor(220, 220, 220);
+        doc.text(`${f}()`, 15, y);
+        doc.text(String(lines), 90, y);
+        doc.text(String(cx), 120, y);
+        doc.setTextColor(...statusColor);
+        doc.text(status, 160, y);
+        y += 7;
+        if (y > 270) { doc.addPage(); y = 20; }
+      });
+
+      y += 4;
+      doc.setDrawColor(50, 50, 50);
+      doc.line(15, y, 195, y);
+      y += 8;
+
+      // Insights
+      if (analysisResult.insights?.summary) {
+        doc.setFontSize(12);
+        doc.setTextColor(200, 200, 200);
+        doc.text('Insights', 15, y);
+        y += 6;
+        doc.setFontSize(9);
+        doc.setTextColor(170, 170, 170);
+        const wrapped = doc.splitTextToSize(analysisResult.insights.summary, 175);
+        doc.text(wrapped, 15, y);
+        y += wrapped.length * 5 + 4;
+      }
+
+      // Suggestions
+      const suggestions = analysisResult.insights?.suggestions || [];
+      if (suggestions.length > 0) {
+        doc.setFontSize(11);
+        doc.setTextColor(200, 200, 200);
+        doc.text('Suggestions', 15, y);
+        y += 6;
+        suggestions.forEach(s => {
+          const color = s.type === 'warning' ? [255, 152, 0] : s.type === 'success' ? [76, 175, 80] : [100, 181, 246];
+          doc.setTextColor(...color);
+          doc.setFontSize(8);
+          const lines = doc.splitTextToSize(`• ${s.text}`, 175);
+          doc.text(lines, 15, y);
+          y += lines.length * 5 + 2;
+          if (y > 270) { doc.addPage(); y = 20; }
+        });
+      }
+
+      doc.save(`codemap-report-${fileName.replace(/\.[^.]+$/, '')}-${now}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert('PDF export failed. See console.');
     }
   };
 
@@ -3659,12 +3951,35 @@ const NewApp = () => {
             <button style={{ ...iconBtnStyle }} onClick={handleDownloadImage} title="Download PNG Image">
               <Image size={14} />
             </button>
+            <button
+              style={{ ...iconBtnStyle, fontSize: "0.65rem", padding: "5px 8px", color: analysisResult ? "#ef9a9a" : "#555" }}
+              onClick={handleExportPDF}
+              disabled={!analysisResult}
+              title="Export Analysis as PDF Report"
+            >
+              PDF
+            </button>
             <button style={{ ...iconBtnStyle }} onClick={() => setViewMode(viewMode === "code" ? "split" : "code")} title="Toggle Code">
               {viewMode === "code" ? <Columns size={14} /> : <Maximize size={14} />}
             </button>
             <button style={{ ...iconBtnStyle }} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Toggle Theme">
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </button>
+            {/* Session controls */}
+            <button
+              style={{ ...iconBtnStyle, fontSize: "0.7rem", padding: "5px 8px", color: "var(--text-muted)" }}
+              onClick={handleExportSession}
+              title={`Export session${sessionSavedAt ? ` · auto-saved ${sessionSavedAt}` : ''}`}
+            >
+              <Download size={12} />
+            </button>
+            <label
+              style={{ ...iconBtnStyle, fontSize: "0.7rem", padding: "5px 8px", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              title="Import session"
+            >
+              <FolderOpen size={12} />
+              <input type="file" accept=".json" onChange={handleImportSession} style={{ display: "none" }} />
+            </label>
             <button
               style={{ ...iconBtnStyle, color: apiKeyStatus === 'ok' ? '#4caf50' : 'var(--text-light)' }}
               onClick={() => { setApiKeyInput(geminiApiKey); setShowApiKeyModal(true); }}
@@ -4146,31 +4461,44 @@ const NewApp = () => {
                     const cx = analysisResult.complexity?.[fname] || 0;
                     const badgeColor = cx <= 5 ? "#4caf50" : cx <= 10 ? "#ff9800" : "#f44336";
                     const isActive = currentFunc === fname;
+                    // Check if this function is dead (0 incoming calls) via func_dep_graph
+                    const depNode = analysisResult?.func_dep_graph?.nodes?.find(n => n.id === fname);
+                    const isFuncDead = depNode?.data?.isDead === true;
                     return (
-                      <div
-                        key={fname}
-                        onClick={() => handleAnalyze(fname)}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
-                          background: isActive ? "var(--bg-hover)" : "transparent",
-                          borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
-                          fontSize: "0.8rem", color: isActive ? "var(--text-bright)" : "#bbb",
-                          transition: "background 0.15s"
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
-                        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
-                          <Code size={12} color={badgeColor} />
-                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fname}()</span>
+                      <div key={fname}>
+                        <div
+                          onClick={() => handleAnalyze(fname)}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "6px 8px", marginBottom: "2px", borderRadius: "4px", cursor: "pointer",
+                            background: isActive ? "var(--bg-hover)" : "transparent",
+                            borderLeft: isActive ? `2px solid ${badgeColor}` : "2px solid transparent",
+                            fontSize: "0.8rem", color: isActive ? "var(--text-bright)" : "#bbb",
+                            transition: "background 0.15s"
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
+                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
+                            <Code size={12} color={badgeColor} />
+                            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fname}()</span>
+                          </div>
+                          <span style={{
+                            background: badgeColor + "22", color: badgeColor, fontSize: "0.65rem",
+                            padding: "2px 6px", borderRadius: "10px", fontWeight: "bold", flexShrink: 0
+                          }}>
+                            {cx}
+                          </span>
                         </div>
-                        <span style={{
-                          background: badgeColor + "22", color: badgeColor, fontSize: "0.65rem",
-                          padding: "2px 6px", borderRadius: "10px", fontWeight: "bold", flexShrink: 0
-                        }}>
-                          {cx}
-                        </span>
+                        {isFuncDead && (
+                          <div style={{
+                            display: "flex", alignItems: "center", gap: "5px",
+                            padding: "2px 8px 4px", fontSize: "0.65rem", color: "#ff9800",
+                            background: "#ff980010", borderRadius: "3px", marginBottom: "4px", marginLeft: "4px"
+                          }}>
+                            <AlertTriangle size={10} color="#ff9800" /> ⚠️ Unused Code — 0 incoming calls
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -4331,6 +4659,64 @@ const NewApp = () => {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Git Insights — Local (git blame summary) */}
+              {(localGitBlame || gitBlameLoading) && (sidebarView === 'explorer' || sidebarView === 'blueprint') && (
+                <div style={{ padding: "12px", borderTop: "1px solid var(--border-main)" }}>
+                  <div style={{ fontSize: "0.7rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <GitBranch size={12} color="#7c4dff" /> Git Insights
+                  </div>
+                  {gitBlameLoading ? (
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>Loading git blame…</div>
+                  ) : localGitBlame ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ fontSize: "0.68rem", color: "#888" }}>
+                        {localGitBlame.total_lines} line{localGitBlame.total_lines !== 1 ? "s" : ""} tracked
+                      </div>
+                      {localGitBlame.top_authors?.map((a, i) => (
+                        <div key={i} style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          background: "var(--bg-main)", borderRadius: "5px", padding: "5px 8px",
+                          borderLeft: `3px solid ${i === 0 ? '#7c4dff' : '#444'}`
+                        }}>
+                          <div style={{ fontSize: "0.72rem", color: i === 0 ? "#b388ff" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "150px" }}>
+                            {a.author}
+                          </div>
+                          <span style={{ fontSize: "0.65rem", color: "#666", flexShrink: 0 }}>{a.lines}L</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Git Insights — GitHub commits */}
+              {sidebarView === 'github' && githubFileCommits.length > 0 && githubSelectedFile && analysisResult && (
+                <div style={{ padding: "12px", borderTop: "1px solid var(--border-main)" }}>
+                  <div style={{ fontSize: "0.7rem", color: "#7c4dff", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <GitBranch size={12} color="#7c4dff" /> Git Insights
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    {githubFileCommits.slice(0, 4).map((c, i) => (
+                      <a key={i} href={c.url || '#'} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                        <div style={{
+                          background: "var(--bg-main)", borderRadius: "5px", padding: "5px 8px",
+                          borderLeft: `3px solid ${i === 0 ? '#7c4dff' : '#333'}`
+                        }}>
+                          <div style={{ fontSize: "0.72rem", color: i === 0 ? "#b388ff" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.message || c.commit?.message || 'Commit'}
+                          </div>
+                          <div style={{ display: "flex", gap: "8px", marginTop: "2px" }}>
+                            <span style={{ fontSize: "0.6rem", color: "#666" }}>{c.author || c.commit?.author?.name}</span>
+                            <span style={{ fontSize: "0.6rem", color: "#555" }}>{(c.date || c.commit?.author?.date || '').slice(0, 10)}</span>
+                            <span style={{ fontSize: "0.55rem", color: "#444", fontFamily: "monospace" }}>{(c.sha || '').slice(0, 7)}</span>
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
             </>

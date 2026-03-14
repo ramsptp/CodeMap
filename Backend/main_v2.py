@@ -2,6 +2,9 @@ import ast
 import re
 import logging
 import uuid
+import subprocess
+import os
+import datetime
 from typing import Optional
 import google.generativeai as genai
 from fastapi import FastAPI
@@ -1004,7 +1007,7 @@ def extract_symbols(code: str, language: str) -> list:
     try:
         if lang == "python":
             tree = ast.parse(code)
-            names = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+            names = [n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
         elif lang == "java":
             methods = extract_java_methods(code)
             names = [m["name"] for m in methods]
@@ -1174,7 +1177,7 @@ async def analyze_code(request: CodeRequest):
     try:
         if lang == "python":
             tree = ast.parse(request.code)
-            funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+            funcs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
             result["functions"]["names"] = [f.name for f in funcs]
             result["functions"]["count"] = len(funcs)
             result["complexity"] = {f.name: calculate_python_complexity(f) for f in funcs}
@@ -1264,7 +1267,7 @@ async def analyze_code(request: CodeRequest):
             if lang == "python":
                 tree = ast.parse(request.code)
                 for node in ast.walk(tree):
-                    if isinstance(node, ast.FunctionDef):
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         lines = request.code.split('\n')
                         func_bodies[node.name] = '\n'.join(lines[node.lineno - 1:node.end_lineno])
             elif lang == "java":
@@ -1287,10 +1290,24 @@ async def analyze_code(request: CodeRequest):
                     if call in all_func_names and call != caller:
                         dep_edges.append({"source": caller, "target": call})
             
+            # Compute in-degree for dead code detection
+            in_degree = {fname: 0 for fname in func_bodies.keys()}
+            for edge in dep_edges:
+                if edge["target"] in in_degree:
+                    in_degree[edge["target"]] += 1
+
+            # Common entry points — never flagged as dead
+            ENTRY_POINTS = {
+                'main', '__init__', 'setUp', 'tearDown', 'run', 'start',
+                'execute', 'app', 'index', '__main__', 'init', 'setup',
+                'handle', 'handler', 'test', 'render',
+            }
+
             # Build graph data for the frontend
             dep_nodes = []
             for i, fname in enumerate(func_bodies.keys()):
                 cx = result["complexity"].get(fname, 0)
+                is_dead = in_degree.get(fname, 0) == 0 and fname.lower() not in ENTRY_POINTS
                 dep_nodes.append({
                     "id": fname,
                     "data": {
@@ -1298,7 +1315,8 @@ async def analyze_code(request: CodeRequest):
                         "complexity": cx,
                         "language": lang,
                         "lineCount": result.get("line_counts", {}).get(fname, 0),
-                        "snippet": result.get("code_snippets", {}).get(fname, "")
+                        "snippet": result.get("code_snippets", {}).get(fname, ""),
+                        "isDead": is_dead,
                     },
                     "type": "funcDep",
                 })
@@ -1460,7 +1478,7 @@ async def explain_code(request: ExplainRequest):
                 if lang == "python":
                     tree = ast.parse(request.code)
                     for node in ast.walk(tree):
-                        if isinstance(node, ast.FunctionDef) and node.name == request.function_name:
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == request.function_name:
                             lines = request.code.split('\n')
                             extracted = '\n'.join(lines[node.lineno - 1:node.end_lineno])
                             break
@@ -1603,7 +1621,7 @@ async def analyze_project(request: ProjectRequest):
             try:
                 if lang == "python":
                     tree = ast.parse(f.content)
-                    func_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+                    func_nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
                     funcs = [fn.name for fn in func_nodes]
                     complexity = {fn.name: calculate_python_complexity(fn) for fn in func_nodes}
                 elif lang == "java":
@@ -1772,4 +1790,81 @@ async def analyze_project(request: ProjectRequest):
     
     except Exception as e:
         logger.error(f"Project analysis failed: {str(e)}")
+        return {"error": str(e)}
+
+
+# ==========================================
+# 12. GIT BLAME INTEGRATION
+# ==========================================
+
+class GitBlameRequest(BaseModel):
+    file_path: str
+    repo_path: str = "."
+
+
+@app.post("/git-blame")
+async def git_blame(request: GitBlameRequest):
+    """
+    Run git blame on a file and return per-line author/date/commit info.
+    Returns: { blame: { lineNum: { author, date, commit, summary } } }
+    """
+    try:
+        result = subprocess.run(
+            ["git", "blame", "--line-porcelain", request.file_path],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=os.path.abspath(request.repo_path),
+        )
+
+        if result.returncode != 0:
+            err = result.stderr.strip() or "git blame failed"
+            return {"error": err}
+
+        lines = result.stdout.split('\n')
+        blame_data = {}
+        current_commit = None
+        current_line_num = None
+        current_info = {}
+
+        for line in lines:
+            # Commit line: 40-char hex hash + " orig_line final_line count"
+            if len(line) >= 40 and re.match(r'^[0-9a-f]{40} ', line):
+                parts = line.split(' ')
+                current_commit = parts[0]
+                current_line_num = int(parts[2]) if len(parts) >= 3 else None
+                current_info = {"commit": current_commit[:8]}
+            elif line.startswith("author "):
+                current_info["author"] = line[7:].strip()
+            elif line.startswith("author-time "):
+                ts = int(line[12:].strip())
+                current_info["date"] = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+            elif line.startswith("summary "):
+                current_info["summary"] = line[8:].strip()[:72]
+            elif line.startswith("\t") and current_line_num is not None:
+                # Code line — store accumulated info
+                blame_data[str(current_line_num)] = dict(current_info)
+
+        # Summarise: unique authors + most recent commit
+        authors = {}
+        for info in blame_data.values():
+            a = info.get("author", "Unknown")
+            authors[a] = authors.get(a, 0) + 1
+
+        top_authors = sorted(authors.items(), key=lambda x: -x[1])[:5]
+
+        return {
+            "blame": blame_data,
+            "summary": {
+                "top_authors": [{"author": a, "lines": n} for a, n in top_authors],
+                "total_lines": len(blame_data),
+            }
+        }
+
+    except FileNotFoundError:
+        return {"error": "git not found. Make sure git is installed and on PATH."}
+    except subprocess.TimeoutExpired:
+        return {"error": "git blame timed out (>15s)."}
+    except Exception as e:
+        logger.error(f"git blame failed: {e}")
         return {"error": str(e)}

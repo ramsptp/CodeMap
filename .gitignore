@@ -60,3 +60,6 @@ yarn-error.log*
 *.swo
 
 start.bat
+
+# --- Project Docs (local only) ---
+PROJECT.md

@@ -10,6 +10,8 @@
     "axios": "^1.11.0",
     "dagre": "^0.8.5",
     "html-to-image": "^1.11.13",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "mermaid": "^11.9.0",
