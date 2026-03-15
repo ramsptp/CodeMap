@@ -1856,39 +1856,205 @@ async def git_blame(request: GitBlameRequest):
 
 
 # ==========================================
-# /quiz  — generate a multiple-choice question about a function
+# /quiz  — generate a multiple-choice question locally (no AI)
 # ==========================================
 class QuizRequest(BaseModel):
     code: str
     language: str = "python"
     function_name: Optional[str] = None
 
+
+def _unparse(node) -> str:
+    """Convert an AST node to a readable string."""
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return "..."
+
+def _quiz_python(code: str, fname: Optional[str]) -> Optional[dict]:
+    import random
+    try:
+        tree = ast.parse(code)
+    except Exception:
+        return None
+
+    func_node = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if fname is None or node.name == fname:
+                func_node = node
+                break
+    if not func_node:
+        return None
+
+    name = func_node.name
+    candidates = []
+
+    # --- 1. Return value for a specific branch ---
+    # Find if/elif nodes that have a single return in their body
+    for node in ast.walk(func_node):
+        if isinstance(node, ast.If):
+            condition = _unparse(node.test)
+            # Direct return in the if body
+            if node.body and isinstance(node.body[0], ast.Return) and node.body[0].value is not None:
+                ret_val = _unparse(node.body[0].value)
+                # Gather other return values as distractors
+                all_rets = [_unparse(n.value) for n in ast.walk(func_node)
+                            if isinstance(n, ast.Return) and n.value is not None
+                            and _unparse(n.value) != ret_val]
+                # Add plausible distractors
+                generic = [w for w in ["0", "-1", "None", "True", "False", "[]", "n", "result"]
+                           if w != ret_val]
+                distractors = list(dict.fromkeys(all_rets + generic))[:3]
+                while len(distractors) < 3:
+                    distractors.append(f"undefined_{len(distractors)}")
+                opts_raw = [ret_val] + distractors[:3]
+                random.shuffle(opts_raw)
+                candidates.append({
+                    "question": f"What does `{name}()` return when `{condition}` is true?",
+                    "options": opts_raw,
+                    "correct": opts_raw.index(ret_val),
+                    "explanation": f"When `{condition}` is true, `{name}()` returns `{ret_val}`."
+                })
+                break  # one branch question is enough
+
+    # --- 2. Initial variable assignment ---
+    for node in ast.walk(func_node):
+        if isinstance(node, ast.Assign):
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                var = node.targets[0].id
+                val = _unparse(node.value)
+                # Only if it's a simple literal or short expression (not a long call)
+                if len(val) <= 20 and var not in ('self', 'cls'):
+                    generic = [w for w in ["0", "1", "-1", "None", "[]", "{}", "True", "False", '""']
+                               if w != val][:3]
+                    while len(generic) < 3:
+                        generic.append(f"???{len(generic)}")
+                    opts_raw = [val] + generic
+                    random.shuffle(opts_raw)
+                    candidates.append({
+                        "question": f"What is the initial value assigned to `{var}` inside `{name}()`?",
+                        "options": opts_raw,
+                        "correct": opts_raw.index(val),
+                        "explanation": f"`{var}` is initialised to `{val}` in `{name}()`."
+                    })
+                    break
+
+    # --- 3. For-loop iterator ---
+    for node in ast.walk(func_node):
+        if isinstance(node, ast.For):
+            iter_str = _unparse(node.iter)
+            target_str = _unparse(node.target)
+            # Build plausible wrong iterators
+            wrong_iters = []
+            if "range" in iter_str:
+                # Tweak the range arguments slightly
+                wrong_iters = [
+                    iter_str.replace("1,", "0,").replace(", 1)", ")"),
+                    iter_str.replace("n + 1", "n").replace("n+1", "n"),
+                    iter_str.replace("range(1,", "range(0,").replace("range(1, ", "range(0, "),
+                ]
+                wrong_iters = [w for w in wrong_iters if w != iter_str]
+            generic_iters = [f"range({target_str})", f"range(0, n)", f"range(1, n)", f"range(n + 1)"]
+            distractors = list(dict.fromkeys(wrong_iters + [w for w in generic_iters if w != iter_str]))[:3]
+            while len(distractors) < 3:
+                distractors.append(f"range({len(distractors)})")
+            opts_raw = [iter_str] + distractors[:3]
+            random.shuffle(opts_raw)
+            candidates.append({
+                "question": f"What does the `for` loop in `{name}()` iterate over?",
+                "options": opts_raw,
+                "correct": opts_raw.index(iter_str),
+                "explanation": f"The loop iterates over `{iter_str}`, stepping `{target_str}` through each value."
+            })
+            break
+
+    # --- 4. What triggers an early return (first conditional with a return) ---
+    for node in ast.walk(func_node):
+        if isinstance(node, ast.If):
+            cond = _unparse(node.test)
+            has_ret = any(isinstance(n, ast.Return) for n in node.body)
+            if has_ret and len(cond) <= 30:
+                # Flip the condition and nearby variants as wrong options
+                flipped = cond.replace("< 0", "> 0").replace("> 0", "< 0") \
+                              .replace("== 0", "!= 0").replace("!= 0", "== 0") \
+                              .replace("is None", "is not None")
+                distractors = [flipped]
+                extra = [f"{cond} and n > 0", f"n >= 0", f"n == 1"]
+                for e in extra:
+                    if e != cond and e not in distractors:
+                        distractors.append(e)
+                    if len(distractors) == 3:
+                        break
+                while len(distractors) < 3:
+                    distractors.append(f"n == {len(distractors)}")
+                opts_raw = [cond] + distractors[:3]
+                random.shuffle(opts_raw)
+                candidates.append({
+                    "question": f"Which condition in `{name}()` causes an early return?",
+                    "options": opts_raw,
+                    "correct": opts_raw.index(cond),
+                    "explanation": f"When `{cond}` is true, `{name}()` returns immediately."
+                })
+                break
+
+    # --- 5. Accumulator variable (augmented assignment like result *= i) ---
+    for node in ast.walk(func_node):
+        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            var = node.target.id
+            op = {ast.Add: "+=", ast.Mult: "*=", ast.Sub: "-=", ast.Div: "/="}.get(type(node.op), "op=")
+            val_str = _unparse(node.value)
+            wrong_vars = [w for w in ["total", "count", "acc", "temp", "n", "i", "sum"]
+                          if w != var][:3]
+            opts_raw = [var] + wrong_vars
+            random.shuffle(opts_raw)
+            candidates.append({
+                "question": f"Which variable accumulates the running result in `{name}()` (using `{op}`)?",
+                "options": opts_raw,
+                "correct": opts_raw.index(var),
+                "explanation": f"`{var}` is updated with `{var} {op} {val_str}` on each iteration."
+            })
+            break
+
+    # --- 6. Recursion (fallback) ---
+    call_names = [n.func.id for n in ast.walk(func_node)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    is_recursive = name in call_names
+    yes_no = ["Yes", "No", "Only on certain inputs", "It uses a helper function instead"]
+    candidates.append({
+        "question": f"Does `{name}()` call itself recursively?",
+        "options": yes_no, "correct": 0 if is_recursive else 1,
+        "explanation": f"`{name}()` {'does' if is_recursive else 'does not'} call itself recursively."
+    })
+
+    if not candidates:
+        return None
+
+    # Weight logic-based questions higher (all except the last recursion one)
+    weights = [3] * (len(candidates) - 1) + [1]
+    return random.choices(candidates, weights=weights, k=1)[0]
+
+def _quiz_fallback(code: str, fname: Optional[str]) -> dict:
+    """Fallback: recursion question — always meaningful, never structural."""
+    import re as _re
+    name = fname or "the function"
+    is_recursive = bool(fname and _re.search(r'\b' + _re.escape(fname) + r'\s*\(', code))
+    yes_no = ["Yes", "No", "Only on certain inputs", "It uses a helper function instead"]
+    return {
+        "question": f"Does `{name}()` call itself recursively?",
+        "options": yes_no,
+        "correct": 0 if is_recursive else 1,
+        "explanation": f"`{name}()` {'calls itself recursively' if is_recursive else 'does not call itself — it is iterative or delegates to other functions'}."
+    }
+
 @app.post("/quiz")
 async def generate_quiz(request: QuizRequest):
-    if not _gemini_api_key or not _gemini_model:
-        return {"error": "Gemini API key not set. Use /set-api-key first."}
-    lang = request.language
-    func_label = f"function `{request.function_name}`" if request.function_name else "the code"
-    prompt = (
-        f"You are a coding tutor. Given this {lang} {func_label}, generate a multiple-choice quiz question "
-        f"that tests understanding of its logic or behaviour (not syntax trivia).\n\n"
-        f"Code:\n```{lang}\n{request.code}\n```\n\n"
-        f"Return ONLY valid JSON — no markdown fences, no explanation outside the JSON:\n"
-        f'{{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "correct": 0, "explanation": "..."}}\n'
-        f"`correct` is the 0-based index of the correct option."
-    )
     try:
-        import json as _json
-        response = _gemini_model.generate_content(prompt)
-        text = response.text.strip()
-        # Strip any accidental markdown fences
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        text = text.strip()
-        data = _json.loads(text)
-        return data
+        if request.language == "python":
+            result = _quiz_python(request.code, request.function_name)
+            if result:
+                return result
+        return _quiz_fallback(request.code, request.function_name)
     except Exception as e:
         logger.error(f"Quiz generation failed: {e}")
         return {"error": str(e)}
