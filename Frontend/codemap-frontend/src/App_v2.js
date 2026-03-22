@@ -19,13 +19,16 @@ import {
   FileText, Layers, Trash2, FileCode, ChevronDown, Edit3,
   Search, FolderOpen, ChevronRight, Move, Maximize, Minus, X, Download, Github, Loader,
   AlertTriangle, CheckCircle, Info, Zap, Image, LayoutDashboard, BookOpen, Sun, Moon,
-  RotateCcw, RotateCw, HelpCircle, Network
+  RotateCcw, RotateCw, HelpCircle, Network, Code2, Share2
 } from "lucide-react";
 import './theme.css';
 import templates, { TEMPLATE_CATEGORIES } from './templates';
 import FileExplorer from './components/FileExplorer';
 import GitHubExplorer from './components/GitHubExplorer';
 import { parseRepoInput, fetchDefaultBranch, fetchRepoTree, fetchFileContent, checkRateLimit, fetchReadme, fetchFileCommits } from './utils/githubApi';
+
+// Dynamically resolve backend URL so the app works on mobile (same WiFi)
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 // ===========================================
 // DEPENDENCY SCANNER
@@ -1930,6 +1933,15 @@ const NewApp = () => {
     localStorage.setItem('codemap-theme', theme);
   }, [theme]);
 
+  // Mobile layout detection
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [mobileTab, setMobileTab] = useState('code');
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // ========================================================
   // PHASE 4B — PERSISTENT SESSIONS
   // ========================================================
@@ -2344,7 +2356,7 @@ const NewApp = () => {
       // POST to analyze-project
       const projectFiles = codeFiles.filter(f => f.content).map(f => ({ path: f.path, content: f.content }));
       if (projectFiles.length > 0) {
-        const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
+        const res = await axios.post(`${API_BASE}/analyze-project`, { files: projectFiles });
         if (!res.data.error) {
           setGithubBlueprintData(res.data);
           // Inject fetched content back into the tree so double-click can find it
@@ -2500,7 +2512,7 @@ const NewApp = () => {
       }
 
       try {
-        const response = await axios.post('http://127.0.0.1:8000/analyze-multi', { files });
+        const response = await axios.post(`${API_BASE}/analyze-multi`, { files });
         if (response.data && !response.data.error) {
           setCrossFileData(response.data);
           console.log('📊 Cross-file analysis:', response.data);
@@ -2517,7 +2529,7 @@ const NewApp = () => {
   useEffect(() => {
     const savedKey = localStorage.getItem('codemap_gemini_key');
     if (savedKey) {
-      axios.post('http://127.0.0.1:8000/set-api-key', { api_key: savedKey })
+      axios.post(`${API_BASE}/set-api-key`, { api_key: savedKey })
         .then(res => {
           if (res.data.status === 'ok') setApiKeyStatus('ok');
           else setApiKeyStatus('error');
@@ -2530,7 +2542,7 @@ const NewApp = () => {
   const handleSaveApiKey = async () => {
     if (!apiKeyInput.trim()) return;
     try {
-      const res = await axios.post('http://127.0.0.1:8000/set-api-key', { api_key: apiKeyInput.trim() });
+      const res = await axios.post(`${API_BASE}/set-api-key`, { api_key: apiKeyInput.trim() });
       if (res.data.status === 'ok') {
         localStorage.setItem('codemap_gemini_key', apiKeyInput.trim());
         setGeminiApiKey(apiKeyInput.trim());
@@ -2562,7 +2574,7 @@ const NewApp = () => {
     setAiLoading(true);
     setAiExplanation(null);
     try {
-      const res = await axios.post('http://127.0.0.1:8000/explain', {
+      const res = await axios.post(`${API_BASE}/explain`, {
         code,
         language: lang,
         function_name: currentFunc || null,
@@ -2853,7 +2865,7 @@ const NewApp = () => {
           }
           if (filesArray.length > 0) {
             setBlueprintLoading(true);
-            axios.post('http://127.0.0.1:8000/analyze-project', { files: filesArray })
+            axios.post(`${API_BASE}/analyze-project`, { files: filesArray })
               .then(res => {
                 if (res.data && !res.data.error) {
                   setBlueprintData(res.data);
@@ -2960,7 +2972,7 @@ const NewApp = () => {
       const funcName = quizTargetFunc || (analysisResult.functions?.names?.[0] || '');
       const code = analysisResult?.code_snippets?.[funcName] || currentFileContent;
       const lang = analysisResult?.language || 'python';
-      const res = await axios.post('http://127.0.0.1:8000/quiz', { code, language: lang, function_name: funcName });
+      const res = await axios.post(`${API_BASE}/quiz`, { code, language: lang, function_name: funcName });
       setQuizQuestion(res.data);
     } catch (err) {
       alert('Quiz generation failed: ' + (err.response?.data?.detail || err.message));
@@ -3015,7 +3027,7 @@ const NewApp = () => {
     try {
       const snippets = {};
       path.forEach(fn => { snippets[fn] = analysisResult?.code_snippets?.[fn] || ''; });
-      const res = await axios.post('http://127.0.0.1:8000/explain-path', {
+      const res = await axios.post(`${API_BASE}/explain-path`, {
         path,
         snippets,
         language: analysisResult?.language || 'python',
@@ -3170,7 +3182,7 @@ const NewApp = () => {
         setCurrentFunc(null);
       }
 
-      const response = await axios.post("http://127.0.0.1:8000/analyze", payload);
+      const response = await axios.post(`${API_BASE}/analyze`, payload);
       const newResult = response.data;
 
       // Preserve func_dep_graph from whole-file analysis when drilling into a function
@@ -3180,6 +3192,7 @@ const NewApp = () => {
 
       setAnalysisResult(newResult);
       setAiExplanation(null);
+      if (isMobile) setMobileTab('graph');
 
       // Cache the result
       const cacheKey = sidebarView === 'explorer' ? selectedFilePath :
@@ -3250,7 +3263,7 @@ const NewApp = () => {
     if (!filePath) return;
     setGitBlameLoading(true);
     try {
-      const resp = await axios.post("http://127.0.0.1:8000/git-blame", {
+      const resp = await axios.post(`${API_BASE}/git-blame`, {
         file_path: filePath,
         repo_path: ".",
       });
@@ -3457,6 +3470,291 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
   const handleDragOver = useCallback((event) => {
     event.preventDefault();
   }, []);
+
+  // =============================================
+  // MOBILE LAYOUT  (viewport < 768 px)
+  // =============================================
+  if (isMobile) {
+    const mobileTabBar = [
+      { tab: 'files',   icon: <FolderOpen size={20} />, label: 'Files'   },
+      { tab: 'code',    icon: <Code2      size={20} />, label: 'Code'    },
+      { tab: 'graph',   icon: <Share2     size={20} />, label: 'Graph'   },
+      { tab: 'inspect', icon: <Info       size={20} />, label: 'Inspect' },
+    ];
+    const mobileSubNavViews = [
+      { view: 'explorer',  icon: <FolderOpen     size={15} />, label: 'Files',      accent: '#4caf50' },
+      { view: 'snippets',  icon: <ClipboardList  size={15} />, label: 'Snippets',   accent: '#4caf50' },
+      { view: 'github',    icon: <Github         size={15} />, label: 'GitHub',     accent: '#4caf50' },
+      { view: 'blueprint', icon: <LayoutDashboard size={15} />, label: 'Blueprint', accent: '#7c4dff' },
+      { view: 'templates', icon: <BookOpen       size={15} />, label: 'Templates',  accent: '#ff9800' },
+      { view: 'quiz',      icon: <HelpCircle     size={15} />, label: 'Quiz',       accent: '#e91e63' },
+    ];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', fontFamily: 'Segoe UI, sans-serif', overscrollBehavior: 'none' }}>
+
+        {/* ── TOP BAR ── */}
+        <div style={{ height: 48, background: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border-main)', display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontWeight: 'bold', fontSize: 15, color: 'var(--text-bright)', letterSpacing: '-0.3px' }}>CodeMap</span>
+          <div style={{ flex: 1 }} />
+          {sidebarView === 'snippets' ? (
+            <select value={activeSnippet ? activeSnippet.language : 'python'} onChange={(e) => handleChangeSnippetLanguage(e.target.value)} style={{ ...dropdownStyle, fontSize: '0.7rem', padding: '3px 6px' }}>
+              <option value="python">Python</option>
+              <option value="java">Java</option>
+              <option value="javascript">JavaScript</option>
+              <option value="typescript">TypeScript</option>
+              <option value="cpp">C++</option>
+              <option value="c">C</option>
+            </select>
+          ) : (
+            <div style={{ fontSize: '0.65rem', color: '#666', fontWeight: 'bold', background: 'var(--bg-main)', padding: '3px 7px', borderRadius: 3 }}>
+              {activeFileName.endsWith('.py') ? 'PY' : activeFileName.endsWith('.java') ? 'JAVA' : (activeFileName.endsWith('.js') || activeFileName.endsWith('.jsx')) ? 'JS' : (activeFileName.endsWith('.ts') || activeFileName.endsWith('.tsx')) ? 'TS' : (activeFileName.endsWith('.cpp') || activeFileName.endsWith('.cc')) ? 'C++' : 'FILE'}
+            </div>
+          )}
+          <button
+            style={{ ...runBtnStyle, padding: '5px 12px', minHeight: 34, opacity: loading ? 0.7 : 1 }}
+            onClick={() => { if (sidebarView === 'github' && githubBlueprintData && githubSelectedFile) setGithubFlowchartFile(githubSelectedFile); handleAnalyze(null); }}
+            disabled={loading}
+          >
+            {loading ? <Loader size={13} className="spin" /> : <Play size={13} fill="white" />}
+            {loading ? '' : ' Run'}
+          </button>
+          <button style={{ ...iconBtnStyle, minWidth: 34, minHeight: 34 }} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
+
+        {/* ── CONTENT AREA ── */}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+
+          {/* FILES TAB */}
+          {mobileTab === 'files' && (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* Sub-nav */}
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border-main)', background: 'var(--bg-sidebar)', flexShrink: 0, overflowX: 'auto' }}>
+                {mobileSubNavViews.map(({ view, icon, label, accent }) => (
+                  <button key={view} onClick={() => setSidebarView(view)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: sidebarView === view ? accent : '#666', padding: '8px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, fontSize: '0.6rem', whiteSpace: 'nowrap', flexShrink: 0, minHeight: 44, borderBottom: sidebarView === view ? `2px solid ${accent}` : '2px solid transparent' }}>
+                    {icon}{label}
+                  </button>
+                ))}
+              </div>
+              {/* View content */}
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)' }}>
+                {sidebarView === 'explorer' && (
+                  <FileExplorer fileTree={fileTree} setFileTree={setFileTree} selectedFile={selectedFilePath} onFileSelect={(path, content) => { handleFileSelect(path, content); setMobileTab('code'); }} dependencies={dependencies} onUploadFiles={handleUploadFiles} onUploadFolder={handleUploadFolder} onUploadZip={handleUploadZip} />
+                )}
+                {sidebarView === 'snippets' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 15px', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-main)', flexShrink: 0 }}>
+                      SNIPPETS
+                      <button onClick={handleCreateSnippet} style={{ background: 'none', border: '1px solid #4caf50', color: '#4caf50', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', minHeight: 32 }}>
+                        <Plus size={12} /> New
+                      </button>
+                    </div>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+                      {snippets.map(snippet => (
+                        <div key={snippet.id} onClick={() => { setActiveSnippetId(snippet.id); setMobileTab('code'); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 8px', marginBottom: '4px', borderRadius: '6px', cursor: 'pointer', background: activeSnippetId === snippet.id ? 'var(--bg-hover)' : 'var(--bg-main)', borderLeft: activeSnippetId === snippet.id ? '2px solid #4caf50' : '2px solid transparent', fontSize: '0.8rem', color: activeSnippetId === snippet.id ? 'var(--text-bright)' : '#aaa', minHeight: 44 }}>
+                          <FileCode size={14} color={activeSnippetId === snippet.id ? '#4caf50' : '#666'} />
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet.name}</span>
+                          <span style={{ fontSize: '0.6rem', color: 'var(--border-muted)', textTransform: 'uppercase', flexShrink: 0 }}>{snippet.language}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {sidebarView === 'github' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-main)', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input type="text" value={repoInput} onChange={(e) => setRepoInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleLoadRepo(); }} placeholder="owner/repo" style={{ flex: 1, background: 'var(--bg-main)', border: '1px solid var(--border-light)', borderRadius: '4px', padding: '8px 10px', color: 'var(--text-main)', fontSize: '0.8rem', outline: 'none' }} />
+                        <button onClick={handleLoadRepo} disabled={githubLoadingRepo || !repoInput.trim()} style={{ background: githubLoadingRepo ? 'var(--border-main)' : '#238636', border: 'none', borderRadius: '4px', padding: '8px 14px', color: 'var(--text-bright)', fontSize: '0.8rem', cursor: githubLoadingRepo ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px', minHeight: 40 }}>
+                          {githubLoadingRepo ? <Loader size={12} className="spin" /> : <Play size={12} />}
+                          {githubLoadingRepo ? '...' : 'Load'}
+                        </button>
+                      </div>
+                      {githubError && <div style={{ marginTop: '8px', padding: '6px 8px', background: '#3b1d1d', border: '1px solid #6b3030', borderRadius: '4px', fontSize: '0.75rem', color: '#f87171' }}>{githubError}</div>}
+                    </div>
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                      {githubBlueprintData?.file_info
+                        ? Object.keys(githubBlueprintData.file_info).map(fp => (
+                            <div key={fp} onClick={() => { setGithubSelectedFile(fp); setGithubFlowchartFile(fp); setMobileTab('code'); }} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '0.8rem', color: githubSelectedFile === fp ? 'var(--text-bright)' : '#aaa', background: githubSelectedFile === fp ? 'var(--bg-hover)' : 'transparent', borderLeft: githubSelectedFile === fp ? '2px solid #4caf50' : '2px solid transparent', minHeight: 44, display: 'flex', alignItems: 'center' }}>
+                              {fp.split('/').pop()}
+                            </div>
+                          ))
+                        : !githubLoadingRepo && (
+                            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--border-muted)', fontSize: '0.8rem' }}>Enter a repo above to explore</div>
+                          )
+                      }
+                    </div>
+                  </div>
+                )}
+                {(sidebarView === 'blueprint' || sidebarView === 'templates' || sidebarView === 'quiz') && (
+                  <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--border-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                    {sidebarView === 'quiz'
+                      ? 'Analyze code first, then open the Inspect tab to use Quiz mode.'
+                      : `Use desktop view for full ${sidebarView === 'blueprint' ? 'Blueprint' : 'Templates'} experience.`}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* CODE TAB */}
+          {mobileTab === 'code' && (
+            <textarea
+              value={sidebarView === 'explorer' ? currentFileContent : sidebarView === 'github' ? githubFileContent : sidebarView === 'templates' ? templateCode : (activeSnippet ? activeSnippet.content : '')}
+              onChange={sidebarView === 'github' || sidebarView === 'templates' ? undefined : handleCodeChange}
+              readOnly={sidebarView === 'github' || sidebarView === 'templates'}
+              style={{ ...editorStyle, flex: 1, resize: 'none', fontSize: 13 }}
+              spellCheck="false"
+              placeholder="Paste or type code here, then tap Run…"
+            />
+          )}
+
+          {/* GRAPH TAB */}
+          {mobileTab === 'graph' && (
+            <div style={{ flex: 1, position: 'relative', height: '100%', background: 'var(--bg-main)', display: 'flex', flexDirection: 'column' }}>
+              {loading || blueprintLoading ? (
+                <div style={centerMsgStyle}>{blueprintLoading ? 'Analyzing project…' : 'Analyzing…'}</div>
+              ) : analysisResult?.func_dep_graph && !currentFunc ? (
+                <FuncDepGraph depData={analysisResult.func_dep_graph} onFuncClick={(fn) => handleAnalyze(fn)} graphMemory={graphMemory} setGraphMemory={setGraphMemory} memoryKey="mobile:funcDep" searchQuery="" heatmapMode={false} />
+              ) : analysisResult?.graph_data ? (
+                <FlowGraph ref={graphRef} data={analysisResult.graph_data} onNodeClick={onGraphNodeClick} graphMemory={graphMemory} setGraphMemory={setGraphMemory} memoryKey={`mobile:${currentFunc || 'full'}`} crossFileData={crossFileData} currentFilePath={sidebarView === 'explorer' ? selectedFilePath : githubSelectedFile} />
+              ) : (
+                <div style={centerMsgStyle}>
+                  <p>[ Graph View ]</p>
+                  <p style={{ fontSize: '0.8rem' }}>Tap Run to generate a visualization.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* INSPECT TAB */}
+          {mobileTab === 'inspect' && (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {/* Quiz section */}
+              {analysisResult && (
+                <div style={{ padding: '12px', borderBottom: '1px solid var(--border-main)' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#e91e63', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <HelpCircle size={12} color="#e91e63" /> Quiz Mode
+                  </div>
+                  <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: '8px' }}>Score: {quizScore.correct}/{quizScore.total}</div>
+                  <select value={quizTargetFunc} onChange={e => setQuizTargetFunc(e.target.value)} style={{ ...dropdownStyle, width: '100%', marginBottom: '8px' }}>
+                    {(analysisResult?.functions?.names || []).map(f => <option key={f} value={f}>{f}()</option>)}
+                  </select>
+                  <button onClick={handleGenerateQuiz} disabled={quizLoading} style={{ ...runBtnStyle, background: '#e91e63', width: '100%', justifyContent: 'center', minHeight: 40 }}>
+                    {quizLoading ? <Loader size={13} className="spin" /> : <HelpCircle size={13} />}
+                    {quizLoading ? ' Generating…' : ' Generate Question'}
+                  </button>
+                  {quizQuestion && !quizLoading && (
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#ddd', marginBottom: '10px', lineHeight: 1.5 }}>{quizQuestion.question}</div>
+                      {quizQuestion.options.map((opt, i) => (
+                        <div key={i} onClick={() => handleQuizAnswer(i)} style={{ padding: '10px 12px', marginBottom: '6px', borderRadius: '6px', cursor: 'pointer', border: `1px solid ${quizAnswered === i ? (i === quizQuestion.correct ? '#4caf50' : '#f44336') : '#333'}`, background: quizAnswered !== null && i === quizQuestion.correct ? '#4caf5022' : quizAnswered === i ? '#f4433622' : 'var(--bg-sidebar)', fontSize: '0.78rem', color: '#ccc', minHeight: 44, display: 'flex', alignItems: 'center' }}>
+                          {opt}
+                        </div>
+                      ))}
+                      {quizAnswered !== null && (
+                        <div style={{ marginTop: '8px', padding: '10px', background: 'var(--bg-main)', borderRadius: '6px', borderLeft: `3px solid ${quizAnswered === quizQuestion.correct ? '#4caf50' : '#f44336'}`, fontSize: '0.75rem', color: '#bbb', lineHeight: 1.5 }}>
+                          {quizQuestion.explanation}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Inspector content */}
+              {!analysisResult ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--border-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>Analyze code to see insights here.</div>
+              ) : (
+                <>
+                  {/* Function list */}
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-main)' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#666', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Functions</div>
+                    {(analysisResult?.functions?.names || []).length === 0
+                      ? <div style={{ fontSize: '0.75rem', color: 'var(--border-muted)', fontStyle: 'italic' }}>No functions detected</div>
+                      : analysisResult.functions.names.map(fname => {
+                          const cx = analysisResult.complexity?.[fname] || 0;
+                          const badgeColor = cx <= 5 ? '#4caf50' : cx <= 10 ? '#ff9800' : '#f44336';
+                          const isActive = currentFunc === fname;
+                          return (
+                            <div key={fname} onClick={() => handleAnalyze(fname)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 8px', marginBottom: '2px', borderRadius: '4px', cursor: 'pointer', background: isActive ? 'var(--bg-hover)' : 'transparent', borderLeft: isActive ? `2px solid ${badgeColor}` : '2px solid transparent', fontSize: '0.8rem', color: isActive ? 'var(--text-bright)' : '#bbb', minHeight: 44 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                <Code size={12} color={badgeColor} />
+                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fname}()</span>
+                              </div>
+                              <span style={{ background: badgeColor + '22', color: badgeColor, fontSize: '0.65rem', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold', flexShrink: 0 }}>{cx}</span>
+                            </div>
+                          );
+                        })
+                    }
+                  </div>
+                  {/* Complexity gauge */}
+                  {currentFunc && analysisResult?.complexity?.[currentFunc] != null && (() => {
+                    const cx = analysisResult.complexity[currentFunc];
+                    const pct = Math.min(cx / 20 * 100, 100);
+                    const barColor = cx <= 5 ? '#4caf50' : cx <= 10 ? '#ff9800' : '#f44336';
+                    const label = cx <= 5 ? 'Simple' : cx <= 10 ? 'Moderate' : cx <= 15 ? 'Complex' : 'Very Complex';
+                    return (
+                      <div style={{ padding: '12px', borderBottom: '1px solid var(--border-main)' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#666', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Complexity</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{currentFunc}()</span>
+                          <span style={{ fontSize: '0.75rem', color: barColor, fontWeight: 'bold' }}>{cx} — {label}</span>
+                        </div>
+                        <div style={{ background: 'var(--bg-main)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', borderRadius: '4px', background: `linear-gradient(90deg, #4caf50, ${barColor})`, transition: 'width 0.6s ease' }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {/* AI explain */}
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-main)' }}>
+                    <button onClick={handleExplain} disabled={aiLoading} style={{ width: '100%', padding: '10px 12px', background: aiLoading ? 'var(--border-main)' : 'linear-gradient(135deg, #7c4dff, #448aff)', border: 'none', borderRadius: '6px', cursor: aiLoading ? 'wait' : 'pointer', color: 'var(--text-bright)', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', minHeight: 40 }}>
+                      {aiLoading ? <Loader size={14} className="spin" /> : <Zap size={14} />}
+                      {aiLoading ? 'Thinking…' : `✨ Explain ${currentFunc ? currentFunc + '()' : 'Code'}`}
+                    </button>
+                  </div>
+                  {aiExplanation && (
+                    <div style={{ padding: '12px', borderBottom: '1px solid var(--border-main)' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#7c4dff', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Zap size={12} /> AI Explanation
+                      </div>
+                      <div style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, var(--bg-main) 100%)', borderRadius: '8px', padding: '10px 12px', fontSize: '0.76rem', color: 'var(--text-main)', lineHeight: '1.5', borderLeft: '3px solid #7c4dff' }}>
+                        {aiExplanation.replace(/OVERVIEW:\s*/i, '').replace(/\s*ALGORITHM:[\s\S]*/i, '').trim()}
+                      </div>
+                    </div>
+                  )}
+                  {/* Insights */}
+                  {analysisResult?.insights && (
+                    <div style={{ padding: '12px' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#666', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Insights</div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                        {analysisResult.insights.decision_count > 0 && <span style={{ background: '#ff980022', color: '#ff9800', padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem' }}>🔀 {analysisResult.insights.decision_count} branch{analysisResult.insights.decision_count !== 1 ? 'es' : ''}</span>}
+                        {analysisResult.insights.loop_count > 0 && <span style={{ background: '#00bcd422', color: '#00bcd4', padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem' }}>🔁 {analysisResult.insights.loop_count} loop{analysisResult.insights.loop_count !== 1 ? 's' : ''}</span>}
+                        {analysisResult.insights.return_count > 0 && <span style={{ background: '#f4433622', color: '#f44336', padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem' }}>↩ {analysisResult.insights.return_count} return{analysisResult.insights.return_count !== 1 ? 's' : ''}</span>}
+                      </div>
+                      <div style={{ background: 'var(--bg-main)', borderRadius: '6px', padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text-light)', lineHeight: '1.5', borderLeft: '3px solid #4caf50' }}>
+                        {analysisResult.insights.summary}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── BOTTOM TAB BAR ── */}
+        <div style={{ height: 56, background: 'var(--bg-sidebar)', borderTop: '1px solid var(--border-main)', display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0 }}>
+          {mobileTabBar.map(({ tab, icon, label }) => (
+            <button key={tab} onClick={() => setMobileTab(tab)} style={{ flex: 1, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, color: mobileTab === tab ? '#4fc3f7' : '#555', fontSize: '0.6rem', minHeight: 44, transition: 'color 0.15s' }}>
+              {icon}{label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} style={{ display: "flex", height: "100vh", backgroundColor: "var(--bg-main)", color: "var(--text-main)", fontFamily: "Segoe UI, sans-serif" }}>
@@ -3926,7 +4224,7 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                         console.log('[Blueprint] Code files found:', projectFiles.length, projectFiles.map(f => f.path));
 
                         if (projectFiles.length > 0) {
-                          const res = await axios.post('http://127.0.0.1:8000/analyze-project', { files: projectFiles });
+                          const res = await axios.post(`${API_BASE}/analyze-project`, { files: projectFiles });
                           console.log('[Blueprint] API response:', res.status, JSON.stringify(res.data).slice(0, 300));
                           if (!res.data.error) {
                             setBlueprintData(res.data);
@@ -4089,7 +4387,7 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                   <input type="text" placeholder="e.g. Dijkstra's algorithm" value={aiTemplateQuery} onChange={(e) => setAiTemplateQuery(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && aiTemplateQuery.trim()) {
                       setAiTemplateLoading(true);
-                      axios.post("http://127.0.0.1:8000/generate-template", { query: aiTemplateQuery, language: templateLang })
+                      axios.post(`${API_BASE}/generate-template`, { query: aiTemplateQuery, language: templateLang })
                         .then(res => { if (res.data.error) { alert(res.data.error); return; }
                           const ns = { id: `ai-${Date.now()}`, name: `AI: ${aiTemplateQuery}`, language: templateLang === 'cpp' ? 'c' : templateLang, content: res.data.code };
                           setSnippets(prev => [...prev, ns]); setActiveSnippetId(ns.id); setSidebarView("snippets"); setAiTemplateQuery('');
@@ -4099,7 +4397,7 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                   <button disabled={aiTemplateLoading || !aiTemplateQuery.trim()} onClick={() => {
                     if (!aiTemplateQuery.trim()) return;
                     setAiTemplateLoading(true);
-                    axios.post("http://127.0.0.1:8000/generate-template", { query: aiTemplateQuery, language: templateLang })
+                    axios.post(`${API_BASE}/generate-template`, { query: aiTemplateQuery, language: templateLang })
                       .then(res => { if (res.data.error) { alert(res.data.error); return; }
                         const ns = { id: `ai-${Date.now()}`, name: `AI: ${aiTemplateQuery}`, language: templateLang === 'cpp' ? 'c' : templateLang, content: res.data.code };
                         setSnippets(prev => [...prev, ns]); setActiveSnippetId(ns.id); setSidebarView("snippets"); setAiTemplateQuery('');
@@ -4625,7 +4923,7 @@ _Generated by [CodeMap](https://github.com/yourusername/codemap)_
                             setViewMode('split');
                             // Analyze the file
                             setLoading(true);
-                            axios.post('http://127.0.0.1:8000/analyze', { code: content, language: lang })
+                            axios.post(`${API_BASE}/analyze`, { code: content, language: lang })
                               .then(res => { if (!res.data.error) setAnalysisResult(res.data); })
                               .catch(err => console.error('Analysis failed:', err))
                               .finally(() => setLoading(false));

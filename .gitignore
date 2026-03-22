@@ -63,3 +63,27 @@ start.bat
 
 # --- Project Docs (local only) ---
 PROJECT.md
+
+# --- Diagrams (local only) ---
+diagrams/
+
+# --- LaTeX Report ---
+*.tex
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# --- Claude AI ---
+.claude/
+
+# --- Presentation & scripts (local only) ---
+*.pptx
+make_ppt.py
+fix_urls.js
