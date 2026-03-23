@@ -12,7 +12,9 @@
       "Bash(findstr:*)",
       "Bash(node:*)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Read(//c/tmp/**)",
+      "Bash(node_modules/.bin/react-scripts build:*)"
     ]
   }
 }

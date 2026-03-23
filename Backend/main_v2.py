@@ -1567,7 +1567,9 @@ async def generate_template(request: TemplateRequest):
     try:
         lang = request.language.lower()
         prompt = (
-            f"Write a clean, well-commented {lang} implementation for: {request.query}\n"
+            f"Write a clean {lang} implementation for: {request.query}\n"
+            f"Rules: no multi-line comments (no docstrings, no /* */ blocks, no triple-quoted strings). "
+            f"Short single-line comments only where truly needed.\n"
             f"Include a brief example/test in the main section.\n"
             f"Return ONLY the code, no markdown fences, no explanation text."
         )
@@ -1581,6 +1583,15 @@ async def generate_template(request: TemplateRequest):
                 lines = lines[:-1]
             code = "\n".join(lines)
         
+        # Strip multi-line comments that may have slipped through
+        import re
+        # Remove /* ... */ style blocks (Java/C++)
+        code = re.sub(r'/\*[\s\S]*?\*/', '', code)
+        # Remove Python triple-quoted strings used as comments (not assigned to anything)
+        code = re.sub(r'(?m)^[ \t]*("""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\')\s*$', '', code)
+        # Clean up any resulting blank lines (more than 2 consecutive)
+        code = re.sub(r'\n{3,}', '\n\n', code).strip()
+
         return {"code": code, "name": request.query, "language": lang}
     except Exception as e:
         logger.error(f"Template generation failed: {e}")
