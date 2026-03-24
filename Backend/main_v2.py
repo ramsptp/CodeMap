@@ -2065,24 +2065,26 @@ def _quiz_gemini(code: str, fname: Optional[str], language: str) -> Optional[dic
         return None
     name = fname or "this function"
     prompt = (
-        f"You are a programming quiz generator. Given the following {language} function, "
-        f"produce ONE multiple-choice question that tests understanding of what the function DOES "
-        f"(not just counting loops or lines).\n\n"
+        f"You are a programming quiz generator. Read the following {language} function VERY carefully.\n\n"
         f"```{language}\n{code}\n```\n\n"
+        f"Before writing the question, mentally trace through the code to determine the exact correct answer.\n"
+        f"Do NOT guess or assume — read every line, every return statement, every branch.\n\n"
+        f"Produce ONE multiple-choice question about what the function DOES or RETURNS for a specific input.\n"
+        f"The question must be answerable purely by reading the code above.\n\n"
         f"Respond with ONLY a JSON object — no markdown, no extra text — in this exact format:\n"
-        f'{{"question":"...","options":["A","B","C","D"],"correct":0,"explanation":"..."}}\n\n'
+        f'{{"question":"...","options":["option A text","option B text","option C text","option D text"],"correct":0,"explanation":"..."}}\n\n'
         f"Rules:\n"
-        f"- correct is the 0-based index of the right answer\n"
+        f"- correct is the 0-based index (0, 1, 2, or 3) of the ONLY correct answer\n"
+        f"- verify your answer against the actual code before writing it\n"
         f"- all 4 options must be plausible but only one correct\n"
         f"- question should be specific to `{name}`, not generic\n"
-        f"- explanation should be 1-2 sentences"
+        f"- explanation must cite the specific line or logic that proves the answer"
     )
     try:
         response = _gemini_model.generate_content(prompt)
         raw = response.text.strip()
         # Extract JSON even if there's extra text around it
-        import re as _re
-        m = _re.search(r'\{[\s\S]*\}', raw)
+        m = re.search(r'\{[\s\S]*\}', raw)
         if not m:
             return None
         data = json.loads(m.group())
@@ -2101,15 +2103,15 @@ def _quiz_gemini(code: str, fname: Optional[str], language: str) -> Optional[dic
 @app.post("/quiz")
 async def generate_quiz(request: QuizRequest):
     try:
-        # 1. Try Gemini (best quality, all languages)
-        result = _quiz_gemini(request.code, request.function_name, request.language)
-        if result:
-            return result
-        # 2. Try local AST (Python only, no API needed)
+        # 1. Python: local AST first (deterministic, never hallucinates)
         if request.language == "python":
             result = _quiz_python(request.code, request.function_name)
             if result:
                 return result
+        # 2. Gemini (good for all languages; only used when AST yields nothing)
+        result = _quiz_gemini(request.code, request.function_name, request.language)
+        if result:
+            return result
         # 3. Last resort: recursion question
         return _quiz_fallback(request.code, request.function_name)
     except Exception as e:
