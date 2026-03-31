@@ -14,7 +14,8 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Read(//c/tmp/**)",
-      "Bash(node_modules/.bin/react-scripts build:*)"
+      "Bash(node_modules/.bin/react-scripts build:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
