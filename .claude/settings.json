@@ -15,7 +15,11 @@
       "Bash(pip install:*)",
       "Read(//c/tmp/**)",
       "Bash(node_modules/.bin/react-scripts build:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(grep -n \"A Project Report\\\\|Submitted to the\\\\|by\\\\\\\\\\\\\\\\\\\\\\\\[3mm\\\\\\\\]\" \"c:/Users/abhir/OneDrive/Documents/VSCode/CodeMap/report_adwaid.tex\" \"c:/Users/abhir/OneDrive/Documents/VSCode/CodeMap/report_aswini.tex\" \"c:/Users/abhir/OneDrive/Documents/VSCode/CodeMap/report_jeena.tex\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\abhir\\OneDrive\\Documents\\VSCode\\CodeMap"
     ]
   }
 }

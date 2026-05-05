@@ -87,3 +87,7 @@ diagrams/
 *.pptx
 make_ppt.py
 fix_urls.js
+
+.presentation/
+presentation/
+diary.html
